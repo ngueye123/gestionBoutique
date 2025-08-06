@@ -33,6 +33,12 @@ function Layout() {
             <ShoppingCart className="w-5 h-5 mr-2" />
             Point of Sale
           </Link>
+
+          <Link to="/employes" className="flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100">
+          <Package className="w-5 h-5 mr-2" />
+          Employés
+          </Link>
+
           <button
             onClick={handleLogout}
             className="w-full flex items-center px-4 py-2 text-gray-700 hover:bg-gray-100"
