@@ -9,24 +9,29 @@ use Illuminate\Support\Facades\Hash;
 
 class EmployeController extends Controller
 {
+    use RoleHelper;
+
     public function store(Request $request)
     {
+        if (!$this->canManageEmployees()) {
+            return $this->accessDeniedResponse('Seuls les patrons peuvent gérer les employés');
+        }
+
         $validated = $request->validate([
             'nom' => 'required|string|max:255',
             'email' => 'required|email',
             'mot_de_passe' => 'required|min:6',
-            'role' => 'required|string|max:100',
+            'role' => 'required|string|in:admin,vendeur,caissier',
         ]);
 
-        $utilisateurId = Auth::id(); // ID du patron connecté
+        $utilisateurId = Auth::id();
 
-         if (Employe::where('email', $validated['email'])->exists()) {
+        if (Employe::where('email', $validated['email'])->exists()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Cet email est déjà utilisé. Veuillez en choisir un autre.'
+                'message' => 'Cet email est déjà utilisé'
             ], 400);
         }
-    
 
         $employe = Employe::create([
             'nom' => $validated['nom'],
@@ -45,21 +50,32 @@ class EmployeController extends Controller
 
     public function index()
     {
+        if (!$this->canManageEmployees()) {
+            return $this->accessDeniedResponse('Seuls les patrons peuvent voir la liste des employés');
+        }
+
         $utilisateurId = Auth::id();
         $employes = Employe::where('utilisateur_id', $utilisateurId)->get();
 
-        return response()->json($employes);
+        return response()->json([
+            'success' => true,
+            'employes' => $employes
+        ]);
     }
 
-        public function destroy($id)
+    public function destroy($id)
     {
+        if (!$this->canManageEmployees()) {
+            return $this->accessDeniedResponse('Seuls les patrons peuvent supprimer des employés');
+        }
+
         $utilisateurId = Auth::id();
         $employe = Employe::where('id', $id)->where('utilisateur_id', $utilisateurId)->first();
 
         if (!$employe) {
             return response()->json([
                 'success' => false,
-                'message' => 'Employé introuvable ou non autorisé'
+                'message' => 'Employé introuvable'
             ], 404);
         }
 
@@ -71,10 +87,14 @@ class EmployeController extends Controller
         ]);
     }
 
-        public function updateRole(Request $request, $id)
+    public function updateRole(Request $request, $id)
     {
+        if (!$this->canManageEmployees()) {
+            return $this->accessDeniedResponse('Seuls les patrons peuvent modifier les rôles');
+        }
+
         $request->validate([
-            'role' => 'required|string|in:admin,vendeur,caissier' // Tu peux modifier les rôles ici
+            'role' => 'required|string|in:admin,vendeur,caissier'
         ]);
 
         $utilisateurId = Auth::id();
@@ -83,7 +103,7 @@ class EmployeController extends Controller
         if (!$employe) {
             return response()->json([
                 'success' => false,
-                'message' => 'Employé introuvable ou non autorisé'
+                'message' => 'Employé introuvable'
             ], 404);
         }
 
@@ -96,7 +116,4 @@ class EmployeController extends Controller
             'employe' => $employe
         ]);
     }
-
-
 }
-
