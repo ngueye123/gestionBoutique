@@ -3,33 +3,39 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Tymon\JWTAuth\Contracts\JWTSubject;
+use Illuminate\Notifications\Notifiable;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 
-
-class Utilisateur extends Authenticatable implements JWTSubject
+class Utilisateur extends Authenticatable implements JWTSubject, MustVerifyEmail
 {
-    use HasFactory;
-  
+    use HasFactory, Notifiable;
 
-    protected $table = 'utilisateurs'; // Nom de la table
+    protected $table = 'utilisateurs';
     protected $primaryKey = 'id';
     public $timestamps = false;
+
     protected $fillable = [
         'nom',
         'prenom',
         'email',
         'mot_de_passe',
-        'role'
+        'role',
+        'email_verified_at',
+        'verification_token'
     ];
 
     protected $hidden = [
         'mot_de_passe',
         'remember_token',
+        'verification_token'
     ];
 
-    // Indique à Laravel que 'mot_de_passe' est le champ du mot de passe
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+    ];
+
     public function setPasswordAttribute($value)
     {
         $this->attributes['mot_de_passe'] = bcrypt($value);
@@ -42,7 +48,12 @@ class Utilisateur extends Authenticatable implements JWTSubject
 
     public function produits()
     {
-        return $this->hasMany(Product::class, 'id_utilisateur');
+        return $this->hasMany(Product::class, 'utilisateur_id');
+    }
+
+    public function employes()
+    {
+        return $this->hasMany(Employe::class, 'utilisateur_id');
     }
 
     public function getJWTIdentifier()
@@ -52,6 +63,23 @@ class Utilisateur extends Authenticatable implements JWTSubject
 
     public function getJWTCustomClaims()
     {
-        return [];
+        return [
+            'email_verified' => !is_null($this->email_verified_at)
+        ];
+    }
+
+    public function hasVerifiedEmail()
+    {
+        return !is_null($this->email_verified_at);
+    }
+
+    public function markEmailAsVerified()
+    {
+        $this->forceFill([
+            'email_verified_at' => now(),
+            'verification_token' => null
+        ])->save();
+
+        return true;
     }
 }

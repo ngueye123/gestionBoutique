@@ -12,6 +12,14 @@ Route::post('/register', [UtilisateurController::class, 'register']);
 Route::post('/login', [UtilisateurController::class, 'login']);
 Route::post('/employe/login', [EmployeAuthController::class, 'login']);
 
+// Email verification
+Route::post('/verify-email', [UtilisateurController::class, 'verifyEmail']);
+Route::post('/resend-verification', [UtilisateurController::class, 'resendVerification']);
+
+// Password reset
+Route::post('/forgot-password', [UtilisateurController::class, 'forgotPassword']);
+Route::post('/reset-password', [UtilisateurController::class, 'resetPassword']);
+
 // Routes protégées avec JWT
 Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/logout', [UtilisateurController::class, 'logout']);
