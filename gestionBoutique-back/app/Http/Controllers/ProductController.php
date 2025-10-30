@@ -5,15 +5,20 @@ namespace App\Http\Controllers;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class ProductController extends Controller
 {
     use RoleHelper;
 
+    /**
+     * Afficher la liste des produits
+     */
     public function index(): JsonResponse
     {
-        if (!Auth::check()) {
+        $user = $this->getAuthenticatedUser();
+
+        if (!$user) {
             return response()->json([
                 'success' => false,
                 'message' => 'Utilisateur non authentifié'
@@ -24,25 +29,32 @@ class ProductController extends Controller
             return $this->accessDeniedResponse('Vous n\'avez pas accès à la liste des produits');
         }
 
+        // Déterminer l'ID du patron propriétaire
         $ownerId = $this->getOwnerId();
-        if (!$ownerId) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Impossible de déterminer le propriétaire'
-            ], 400);
-        }
-
         $products = Product::where('utilisateur_id', $ownerId)->get();
 
         return response()->json([
             'success' => true,
-            'products' => $products
+            'products' => $products,
+            'debug' => [
+                'owner_id' => $ownerId,
+                'user_id' => $user->id,
+                'user_type' => get_class($user) === 'App\Models\Employe' ? 'employe' : 'patron',
+                'products_count' => $products->count(),
+                'is_employe' => get_class($user) === 'App\Models\Employe',
+                'is_patron' => get_class($user) === 'App\Models\Utilisateur',
+            ]
         ]);
     }
 
+    /**
+     * Ajouter un produit
+     */
     public function store(Request $request): JsonResponse
     {
-        if (!Auth::check()) {
+        $user = $this->getAuthenticatedUser();
+
+        if (!$user) {
             return response()->json([
                 'success' => false,
                 'message' => 'Utilisateur non authentifié'
@@ -54,22 +66,22 @@ class ProductController extends Controller
         }
 
         $validated = $request->validate([
-            'reference' => 'required',
-            'name' => 'required',
+            'reference' => 'required|string',
+            'name' => 'required|string',
             'price' => 'required|numeric|min:0',
             'stock' => 'required|integer|min:0',
-            'category' => 'required',
+            'category' => 'required|string',
             'min_stock' => 'nullable|integer|min:0',
         ]);
 
         $ownerId = $this->getOwnerId();
-        
+
         if (Product::where('reference', $validated['reference'])
             ->where('utilisateur_id', $ownerId)
             ->exists()) {
             return response()->json([
                 'success' => false,
-                'message' => 'La référence du produit existe déjà'
+                'message' => 'La référence du produit existe déjà pour ce patron'
             ], 400);
         }
 
@@ -83,15 +95,29 @@ class ProductController extends Controller
                 'product' => $product
             ], 201);
         } catch (\Exception $e) {
+            Log::error('Erreur création produit: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la création du produit : ' . $e->getMessage()
+                'message' => 'Erreur lors de la création du produit',
+                'error' => $e->getMessage()
             ], 500);
         }
     }
 
+    /**
+     * Modifier un produit
+     */
     public function update(Request $request, int $id): JsonResponse
     {
+        $user = $this->getAuthenticatedUser();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Utilisateur non authentifié'
+            ], 401);
+        }
+
         if (!$this->canManageProducts()) {
             return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent modifier des produits');
         }
@@ -102,7 +128,10 @@ class ProductController extends Controller
             ->first();
 
         if (!$product) {
-            return response()->json(['message' => 'Produit non trouvé'], 404);
+            return response()->json([
+                'success' => false,
+                'message' => 'Produit non trouvé pour ce patron'
+            ], 404);
         }
 
         $validated = $request->validate([
@@ -114,15 +143,28 @@ class ProductController extends Controller
         ]);
 
         $product->update($validated);
+
         return response()->json([
             'success' => true,
             'message' => 'Produit mis à jour avec succès',
             'product' => $product->fresh(),
-        ], 200);
+        ]);
     }
 
+    /**
+     * Mettre à jour le stock
+     */
     public function updateStock(Request $request, int $id): JsonResponse
     {
+        $user = $this->getAuthenticatedUser();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Utilisateur non authentifié'
+            ], 401);
+        }
+
         if (!$this->canViewProducts()) {
             return $this->accessDeniedResponse('Accès refusé');
         }
@@ -137,7 +179,10 @@ class ProductController extends Controller
             ->first();
 
         if (!$product) {
-            return response()->json(['message' => 'Produit non trouvé'], 404);
+            return response()->json([
+                'success' => false,
+                'message' => 'Produit non trouvé'
+            ], 404);
         }
 
         $newStock = max(0, $product->stock - $validated['quantity']);
@@ -149,8 +194,20 @@ class ProductController extends Controller
         ]);
     }
 
+    /**
+     * Supprimer un produit
+     */
     public function destroy(int $id): JsonResponse
     {
+        $user = $this->getAuthenticatedUser();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Utilisateur non authentifié'
+            ], 401);
+        }
+
         if (!$this->canManageProducts()) {
             return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent supprimer des produits');
         }
@@ -162,16 +219,22 @@ class ProductController extends Controller
                 ->first();
 
             if (!$product) {
-                return response()->json(['message' => 'Produit non trouvé'], 404);
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Produit non trouvé pour ce patron'
+                ], 404);
             }
 
             $product->delete();
+
             return response()->json([
                 'success' => true,
                 'message' => 'Produit supprimé avec succès'
-            ], 200);
+            ]);
         } catch (\Exception $e) {
+            Log::error('Erreur suppression produit: ' . $e->getMessage());
             return response()->json([
+                'success' => false,
                 'message' => 'Erreur lors de la suppression du produit',
                 'error' => $e->getMessage(),
             ], 500);

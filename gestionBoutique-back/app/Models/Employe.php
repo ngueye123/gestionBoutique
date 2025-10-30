@@ -2,14 +2,15 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 
-class Employe extends Model implements JWTSubject
+class Employe extends Authenticatable implements JWTSubject
 {
-
-     protected $table = 'employes';
+    protected $table = 'employes';
     protected $primaryKey = 'id';
     public $timestamps = false;
+    
     protected $fillable = [
         'nom',
         'email',
@@ -19,7 +20,11 @@ class Employe extends Model implements JWTSubject
     ];
 
     protected $hidden = ['mot_de_passe'];
+    
+    // Ajouter utilisateur_id aux attributs visibles
+    protected $appends = ['user_type'];
 
+    // Pour JWT - IMPORTANT
     public function getJWTIdentifier()
     {
         return $this->getKey();
@@ -27,14 +32,26 @@ class Employe extends Model implements JWTSubject
 
     public function getJWTCustomClaims()
     {
-        return [];
+        return [
+            'user_type' => 'employe',
+            'role' => $this->role,
+            'utilisateur_id' => $this->utilisateur_id  // ← IMPORTANT
+        ];
     }
 
-    public function setMotDePasseAttribute($value)
+    // Attribut virtuel pour le user_type
+    public function getUserTypeAttribute()
     {
-        $this->attributes['mot_de_passe'] = bcrypt($value);
+        return 'employe';
     }
 
+    // Pour l'authentification Laravel
+    public function getAuthPassword()
+    {
+        return $this->mot_de_passe;
+    }
+
+    // Relation avec le patron
     public function patron()
     {
         return $this->belongsTo(Utilisateur::class, 'utilisateur_id');

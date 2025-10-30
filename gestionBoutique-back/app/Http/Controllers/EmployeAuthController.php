@@ -5,9 +5,9 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use App\Models\Employe;
-use Illuminate\Support\Facades\Validator;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 
 class EmployeAuthController extends Controller
 {
@@ -18,8 +18,10 @@ class EmployeAuthController extends Controller
             'mot_de_passe' => 'required|string'
         ]);
 
+        // Récupérer l'employé
         $employe = Employe::where('email', $credentials['email'])->first();
 
+        // Vérifier les identifiants
         if (!$employe || !Hash::check($credentials['mot_de_passe'], $employe->mot_de_passe)) {
             return response()->json([
                 'success' => false, 
@@ -27,8 +29,10 @@ class EmployeAuthController extends Controller
             ], 401);
         }
 
+         
+
         try {
-            // Générer le token JWT pour l'employé
+            // ✅ Générer le token JWT directement
             $token = JWTAuth::fromUser($employe);
             
             return response()->json([
@@ -40,14 +44,16 @@ class EmployeAuthController extends Controller
                     'nom' => $employe->nom,
                     'email' => $employe->email,
                     'role' => $employe->role,
-                    'utilisateur_id' => $employe->utilisateur_id
+                    'utilisateur_id' => $employe->utilisateur_id,
+                    'user_type' => 'employe'  // ← Important pour le frontend
                 ],
                 'user_type' => 'employe'
             ]);
         } catch (\Exception $e) {
+            Log::error('Erreur login employé: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la génération du token'
+                'message' => 'Erreur lors de la génération du token: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -71,6 +77,7 @@ class EmployeAuthController extends Controller
                 'message' => 'Déconnexion réussie'
             ]);
         } catch (\Exception $e) {
+            Log::error('Erreur logout employé: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de la déconnexion'
@@ -81,6 +88,7 @@ class EmployeAuthController extends Controller
     public function me()
     {
         try {
+            // ✅ Utiliser Auth::user() qui fonctionne avec JWT
             $employe = Auth::user();
             
             if (!$employe || get_class($employe) !== 'App\Models\Employe') {
@@ -102,6 +110,7 @@ class EmployeAuthController extends Controller
                 'user_type' => 'employe'
             ]);
         } catch (\Exception $e) {
+            Log::error('Erreur me employé: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
                 'message' => 'Erreur lors de la récupération des informations'

@@ -7,11 +7,31 @@ use Illuminate\Support\Facades\Auth;
 trait RoleHelper
 {
     /**
+     * Récupère dynamiquement l'utilisateur authentifié
+     * en testant successivement les guards "api" et "employe"
+     */
+    protected function getAuthenticatedUser()
+    {
+        // Teste le guard patron
+        if (auth('api')->check()) {
+            return auth('api')->user();
+        }
+
+        // Teste le guard employé
+        if (auth('employe')->check()) {
+            return auth('employe')->user();
+        }
+
+        // Aucun utilisateur trouvé
+        return null;
+    }
+
+    /**
      * Vérifie si l'utilisateur connecté est un patron
      */
     protected function isPatron()
     {
-        $user = Auth::user();
+        $user = $this->getAuthenticatedUser();
         return $user && get_class($user) === 'App\Models\Utilisateur';
     }
 
@@ -20,7 +40,7 @@ trait RoleHelper
      */
     protected function isEmployeAdmin()
     {
-        $user = Auth::user();
+        $user = $this->getAuthenticatedUser();
         return $user && get_class($user) === 'App\Models\Employe' && $user->role === 'admin';
     }
 
@@ -29,8 +49,17 @@ trait RoleHelper
      */
     protected function isEmployeVendeur()
     {
-        $user = Auth::user();
+        $user = $this->getAuthenticatedUser();
         return $user && get_class($user) === 'App\Models\Employe' && $user->role === 'vendeur';
+    }
+
+    /**
+     * Vérifie si l'utilisateur connecté est un employé caissier
+     */
+    protected function isEmployeCaissier()
+    {
+        $user = $this->getAuthenticatedUser();
+        return $user && get_class($user) === 'App\Models\Employe' && $user->role === 'caissier';
     }
 
     /**
@@ -46,15 +75,10 @@ trait RoleHelper
      */
     protected function canViewProducts()
     {
-        return $this->isPatron() || $this->isEmployeAdmin() || $this->isEmployeVendeur();
-    }
-
-    /**
-     * Vérifie si l'utilisateur peut gérer les employés
-     */
-    protected function canManageEmployees()
-    {
-        return $this->isPatron();
+        return $this->isPatron()
+            || $this->isEmployeAdmin()
+            || $this->isEmployeVendeur()
+            || $this->isEmployeCaissier();
     }
 
     /**
@@ -62,19 +86,27 @@ trait RoleHelper
      */
     protected function getOwnerId()
     {
-        $user = Auth::user();
-        
+        $user = $this->getAuthenticatedUser();
+
+        if (!$user) {
+            return null;
+        }
+
+        // Si c'est un patron
         if (get_class($user) === 'App\Models\Utilisateur') {
             return $user->id;
-        } elseif (get_class($user) === 'App\Models\Employe') {
+        }
+
+        // Si c'est un employé
+        if (get_class($user) === 'App\Models\Employe') {
             return $user->utilisateur_id;
         }
-        
+
         return null;
     }
 
     /**
-     * Retourne une réponse d'erreur d'accès refusé
+     * Réponse standard d'accès refusé
      */
     protected function accessDeniedResponse($message = 'Accès refusé')
     {

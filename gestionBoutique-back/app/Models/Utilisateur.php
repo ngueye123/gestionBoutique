@@ -36,6 +36,8 @@ class Utilisateur extends Authenticatable implements JWTSubject, MustVerifyEmail
         'email_verified_at' => 'datetime',
     ];
 
+    protected $appends = ['user_type'];
+
     public function setPasswordAttribute($value)
     {
         $this->attributes['mot_de_passe'] = bcrypt($value);
@@ -56,6 +58,7 @@ class Utilisateur extends Authenticatable implements JWTSubject, MustVerifyEmail
         return $this->hasMany(Employe::class, 'utilisateur_id');
     }
 
+    // Pour JWT - IMPORTANT
     public function getJWTIdentifier()
     {
         return $this->getKey();
@@ -64,8 +67,15 @@ class Utilisateur extends Authenticatable implements JWTSubject, MustVerifyEmail
     public function getJWTCustomClaims()
     {
         return [
-            'email_verified' => !is_null($this->email_verified_at)
+            'email_verified' => !is_null($this->email_verified_at),
+            'user_type' => 'patron'  // ← IMPORTANT
         ];
+    }
+
+    // Attribut virtuel pour le user_type
+    public function getUserTypeAttribute()
+    {
+        return 'patron';
     }
 
     public function hasVerifiedEmail()

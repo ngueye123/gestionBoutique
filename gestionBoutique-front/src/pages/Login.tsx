@@ -6,7 +6,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/authStore';
 import { User, Users } from 'lucide-react';
-import { User as UserType } from '../types';
+import { PatronUser, EmployeUser } from '../types';
+import ResendVerification from '../components/ResendVerification';
 
 const loginSchema = z.object({
   email: z.string().email('Adresse email invalide'),
@@ -20,6 +21,7 @@ function Login() {
   const setAuth = useAuthStore(state => state.setAuth);
   const [userType, setUserType] = useState<'patron' | 'employe'>('patron');
   const [loading, setLoading] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
   
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
@@ -38,28 +40,26 @@ function Login() {
       const result = await response.json();
 
       if (result.success) {
-        localStorage.setItem('token', result.token);
-        localStorage.setItem('userType', userType);
-        
         // Stocker les informations utilisateur selon le type
         if (userType === 'patron') {
-          const patronUser: UserType = {
+          const patronUser: PatronUser = {
             id: result.user.id,
             nom: result.user.nom,
             prenom: result.user.prenom,
             email: result.user.email,
-            user_type: 'patron'
+            user_type: 'patron',  // ← IMPORTANT
+            email_verified: result.user.email_verified
           };
           setAuth(patronUser, result.token);
         } else {
-          // Pour les employés, adapter les données au format User
-          const employeUser: UserType = {
+          // Pour les employés
+          const employeUser: EmployeUser = {
             id: result.employe.id,
             nom: result.employe.nom,
-            prenom: '', // Les employés n'ont pas de prénom dans votre modèle
+            prenom: result.employe.prenom || '',
             email: result.employe.email,
             role: result.employe.role as 'admin' | 'vendeur' | 'caissier',
-            user_type: 'employe',
+            user_type: 'employe',  // ← IMPORTANT
             utilisateur_id: result.employe.utilisateur_id
           };
           setAuth(employeUser, result.token);
@@ -68,7 +68,13 @@ function Login() {
         toast.success(`Connexion réussie en tant que ${userType}`);
         navigate('/');
       } else {
-        toast.error(result.message);
+        // Vérifier si c'est une erreur de vérification d'email
+        if (result.email_verified === false) {
+          setUnverifiedEmail(data.email);
+          toast.error(result.message);
+        } else {
+          toast.error(result.message);
+        }
       }
     } catch (error) {
       console.error('Erreur de connexion:', error);
@@ -113,7 +119,7 @@ function Login() {
           </div>
         </div>
 
-       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>
             <label className="block text-sm font-medium text-gray-700">Email</label>
             <input
@@ -156,6 +162,10 @@ function Login() {
             {loading ? 'Connexion...' : `Se connecter en tant que ${userType}`}
           </button>
         </form>
+
+        {unverifiedEmail && userType === 'patron' && (
+          <ResendVerification email={unverifiedEmail} />
+        )}
 
         {userType === 'patron' && (
           <p className="mt-4 text-center text-sm text-gray-600">
