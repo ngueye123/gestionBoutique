@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BarChart3, Package, AlertTriangle, TrendingUp, Users, Crown } from 'lucide-react';
-import { DashboardStats } from '../types';
+import { DashboardStats, isEmployeUser } from '../types';
 import { useAuthStore } from '../store/authStore';
 import { toast } from 'sonner';
 
@@ -76,19 +76,22 @@ function Dashboard() {
   }
 
   const getRoleInfo = () => {
+    if (!user) return null;
+
     if (userType === 'patron') {
       return {
         icon: <Crown className="w-5 h-5 text-yellow-500" />,
         label: 'Propriétaire',
         color: 'bg-yellow-50 text-yellow-800 border-yellow-200'
       };
-    } else {
+    } else if (isEmployeUser(user)) {
       return {
         icon: <Users className="w-5 h-5 text-blue-500" />,
-        label: `Employé ${user?.role}`,
+        label: `Employé ${user.role}`,
         color: 'bg-blue-50 text-blue-800 border-blue-200'
       };
     }
+    return null;
   };
 
   const roleInfo = getRoleInfo();
@@ -98,13 +101,15 @@ function Dashboard() {
       {/* Header avec informations utilisateur */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+          <h1 className="text-2xl font-bold text-gray-800">Tableau de bord</h1>
           <p className="text-gray-600">Vue d'ensemble de votre boutique</p>
         </div>
-        <div className={`flex items-center space-x-2 px-3 py-2 rounded-lg border ${roleInfo.color}`}>
-          {roleInfo.icon}
-          <span className="text-sm font-medium">{roleInfo.label}</span>
-        </div>
+        {roleInfo && (
+          <div className={`flex items-center space-x-2 px-3 py-2 rounded-lg border ${roleInfo.color}`}>
+            {roleInfo.icon}
+            <span className="text-sm font-medium">{roleInfo.label}</span>
+          </div>
+        )}
       </div>
       
       {/* Stats Grid */}
@@ -136,8 +141,8 @@ function Dashboard() {
         <div className="bg-white p-6 rounded-lg shadow-sm border-l-4 border-green-500">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Valeur Totale</p>
-              <p className="text-2xl font-bold text-gray-800">€{stats.totalValue.toFixed(2)}</p>
+              <p className="text-sm font-medium text-gray-600">Valeur Stock</p>
+              <p className="text-2xl font-bold text-gray-800">{stats.totalValue.toFixed(2)} €</p>
             </div>
             <div className="p-3 bg-green-100 rounded-full">
               <BarChart3 className="w-6 h-6 text-green-600" />
@@ -148,8 +153,8 @@ function Dashboard() {
         <div className="bg-white p-6 rounded-lg shadow-sm border-l-4 border-purple-500">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Mouvements</p>
-              <p className="text-2xl font-bold text-gray-800">{stats.stockMovements}</p>
+              <p className="text-sm font-medium text-gray-600">Ventes aujourd'hui</p>
+              <p className="text-2xl font-bold text-gray-800">{stats.todaySales?.toFixed(2) || '0.00'} €</p>
             </div>
             <div className="p-3 bg-purple-100 rounded-full">
               <TrendingUp className="w-6 h-6 text-purple-600" />
@@ -159,25 +164,34 @@ function Dashboard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Historique des ventes */}
+        {/* Historique des ventes (7 derniers jours) */}
         <div className="bg-white p-6 rounded-lg shadow-sm">
           <h2 className="text-lg font-semibold mb-4 flex items-center">
             <TrendingUp className="w-5 h-5 mr-2 text-blue-500" />
-            Historique des Ventes
+            Ventes des 7 derniers jours
           </h2>
           <div className="space-y-3">
-            {stats.salesHistory.map((sale, index) => (
-              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                <span className="text-gray-600 font-medium">
-                  {new Date(sale.date).toLocaleDateString('fr-FR', { 
-                    weekday: 'short', 
-                    day: 'numeric', 
-                    month: 'short' 
-                  })}
-                </span>
-                <span className="font-semibold text-green-600">€{sale.amount.toFixed(2)}</span>
+            {stats.salesHistory && stats.salesHistory.length > 0 ? (
+              stats.salesHistory.map((sale, index) => (
+                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <span className="text-gray-600 font-medium">
+                    {new Date(sale.date).toLocaleDateString('fr-FR', { 
+                      weekday: 'short', 
+                      day: 'numeric', 
+                      month: 'short' 
+                    })}
+                  </span>
+                  <span className={`font-semibold ${sale.amount > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+                    {sale.amount.toFixed(2)} €
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <TrendingUp className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                <p>Aucune vente enregistrée</p>
               </div>
-            ))}
+            )}
           </div>
         </div>
 

@@ -6,6 +6,7 @@ export interface PatronUser {
   email: string
   user_type: 'patron'
   email_verified?: boolean
+ 
 }
 
 export interface EmployeUser {
@@ -20,6 +21,11 @@ export interface EmployeUser {
 }
 
 export type User = PatronUser | EmployeUser
+
+// Type guard pour vérifier si un utilisateur est un employé
+export function isEmployeUser(user: User): user is EmployeUser {
+  return user.user_type === 'employe';
+}
 
 export interface Product {
   id: string
@@ -43,6 +49,8 @@ export interface DashboardStats {
   stockMovements: number
   salesHistory: SaleItem[]
   stockAlerts: StockAlert[]
+  todaySales?: number
+  monthSales?: number
 }
 
 export interface SaleItem {

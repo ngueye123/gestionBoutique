@@ -7,6 +7,8 @@ use App\Http\Controllers\UtilisateurController;
 use App\Http\Controllers\EmployeController;
 use App\Http\Controllers\EmployeAuthController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\VenteController;
+
 
 // Routes publiques
 Route::post('/register', [UtilisateurController::class, 'register']);
@@ -38,15 +40,21 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::post('/products', [ProductController::class, 'store']);
     Route::put('/products/{id}', [ProductController::class, 'update']);
     Route::delete('/products/{id}', [ProductController::class, 'destroy']);
+
+
+    // Routes ventes - accessible à tous les utilisateurs connectés
+    Route::post('/ventes', [VenteController::class, 'store']);
+    Route::get('/ventes', [VenteController::class, 'index']);
+    Route::get('/ventes/{id}', [VenteController::class, 'show']);
     
     // Routes dashboard - seulement patron et admin
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
     
     // Routes employés - seulement patron
-    Route::middleware(['patron.only'])->group(function () {
-        Route::post('/employes', [EmployeController::class, 'store']);
-        Route::get('/employes', [EmployeController::class, 'index']);
-        Route::delete('/employes/{id}', [EmployeController::class, 'destroy']);
-        Route::put('/employes/{id}/role', [EmployeController::class, 'updateRole']);
-    });
+   
+    Route::post('/employes', [EmployeController::class, 'store']);
+    Route::get('/employes', [EmployeController::class, 'index']);
+    Route::delete('/employes/{id}', [EmployeController::class, 'destroy']);
+    Route::put('/employes/{id}/role', [EmployeController::class, 'updateRole']);
+   
 });

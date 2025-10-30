@@ -5,9 +5,13 @@ import { z } from 'zod';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Lock } from 'lucide-react';
+import { PasswordInput } from '../components/PasswordInput';
 
 const resetPasswordSchema = z.object({
-  mot_de_passe: z.string().min(6, 'Le mot de passe doit contenir au moins 6 caractères'),
+  mot_de_passe: z.string()
+    .min(6, 'Le mot de passe doit contenir au moins 6 caractères')
+    .regex(/[A-Z]/, 'Le mot de passe doit contenir au moins une majuscule')
+    .regex(/[0-9]/, 'Le mot de passe doit contenir au moins un chiffre'),
   mot_de_passe_confirmation: z.string().min(6, 'Confirmation requise'),
 }).refine((data) => data.mot_de_passe === data.mot_de_passe_confirmation, {
   message: 'Les mots de passe ne correspondent pas',

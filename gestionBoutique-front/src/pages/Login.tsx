@@ -8,6 +8,7 @@ import { useAuthStore } from '../store/authStore';
 import { User, Users } from 'lucide-react';
 import { PatronUser, EmployeUser } from '../types';
 import ResendVerification from '../components/ResendVerification';
+import { PasswordInput } from '../components/PasswordInput';
 
 const loginSchema = z.object({
   email: z.string().email('Adresse email invalide'),

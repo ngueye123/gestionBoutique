@@ -62,6 +62,11 @@ trait RoleHelper
         return $user && get_class($user) === 'App\Models\Employe' && $user->role === 'caissier';
     }
 
+    protected function canManageEmployees()
+    {
+        return $this->isPatron();
+    }
+
     /**
      * Vérifie si l'utilisateur peut gérer les produits (CRUD)
      */
