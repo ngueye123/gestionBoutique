@@ -86,6 +86,11 @@ trait RoleHelper
             || $this->isEmployeCaissier();
     }
 
+    public function canViewDashboard()
+    {
+        return $this->isPatron() || $this->isEmployeAdmin();
+    }
+
     /**
      * Récupère l'ID du propriétaire (patron) pour les requêtes
      */
