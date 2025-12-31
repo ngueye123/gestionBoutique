@@ -32,7 +32,7 @@ function ResetPassword() {
   const onSubmit = async (data: ResetPasswordForm) => {
     const token = searchParams.get('token');
     const email = searchParams.get('email');
-
+    const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
     if (!token || !email) {
       toast.error('Lien invalide');
       return;
@@ -40,7 +40,7 @@ function ResetPassword() {
 
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/reset-password', {
+      const response = await fetch(`${API_URL}/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -6,6 +6,7 @@ export interface PatronUser {
   email: string
   user_type: 'patron'
   email_verified?: boolean
+  role?: never
 }
 
 export interface EmployeUser {

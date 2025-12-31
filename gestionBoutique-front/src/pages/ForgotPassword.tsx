@@ -19,11 +19,12 @@ function ForgotPassword() {
   const { register, handleSubmit, formState: { errors } } = useForm<ForgotPasswordForm>({
     resolver: zodResolver(forgotPasswordSchema),
   });
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
   const onSubmit = async (data: ForgotPasswordForm) => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/forgot-password', {
+      const response = await fetch(`${API_URL}/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),

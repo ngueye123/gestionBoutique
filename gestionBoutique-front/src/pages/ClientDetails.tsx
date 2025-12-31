@@ -7,6 +7,7 @@ import { Client, Remboursement, VenteCredit } from '../types';
 import { useParams } from 'react-router-dom';
 
 export default function ClientDetails() {
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
   const { id } = useParams<{ id: string }>();
   const clientId = parseInt(id || '1');
   const [client, setClient] = useState<Client | null>(null);
@@ -42,7 +43,7 @@ export default function ClientDetails() {
   const fetchClientDetails = async () => {
     setLoading(true);
     try {
-      const response = await fetchWithAuth(`http://localhost:8000/api/clients/${clientId}`, {
+      const response = await fetchWithAuth(`${API_URL}/clients/${clientId}`, {
         method: 'GET'
       });
       const data = await response.json();
@@ -78,7 +79,7 @@ export default function ClientDetails() {
     setSubmitting(true);
 
     try {
-      const response = await fetchWithAuth('http://localhost:8000/api/remboursements', {
+      const response = await fetchWithAuth(`${API_URL}/remboursements`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

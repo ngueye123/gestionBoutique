@@ -28,15 +28,22 @@ function Login() {
     resolver: zodResolver(loginSchema),
   });
 
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+
   const onSubmit = async (data: LoginForm) => {
-    setLoading(true);
+  setLoading(true);
     try {
+      if (!API_URL) {
+        throw new Error('API_URL non configurée');
+      }
+      
       const endpoint = userType === 'patron' ? '/login' : '/employe/login';
-      const response = await fetch(`http://localhost:8000/api${endpoint}`, {
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
+
 
       const result = await response.json();
 

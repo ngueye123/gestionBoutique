@@ -17,6 +17,7 @@ function Dashboard() {
   const [showCustomDates, setShowCustomDates] = useState(false);
   
   const { token, user, userType } = useAuthStore();
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
   useEffect(() => {
     if (token) {
@@ -27,7 +28,7 @@ function Dashboard() {
   const fetchStats = async () => {
     setLoading(true);
     try {
-      let url = `http://localhost:8000/api/dashboard/stats?period=${period}`;
+      let url = `${API_URL}/dashboard/stats?period=${period}`;
       
       if (period === 'custom' && customDates.start && customDates.end) {
         url += `&start_date=${customDates.start}&end_date=${customDates.end}`;

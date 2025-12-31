@@ -8,6 +8,7 @@ function VerifyEmail() {
   const navigate = useNavigate();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('');
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
   useEffect(() => {
     const token = searchParams.get('token');
@@ -24,7 +25,7 @@ function VerifyEmail() {
 
   const verifyEmail = async (token: string, email: string) => {
     try {
-      const response = await fetch('http://localhost:8000/api/verify-email', {
+      const response = await fetch(`${API_URL}/verify-email`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

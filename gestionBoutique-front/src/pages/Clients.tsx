@@ -13,7 +13,8 @@ export default function Clients() {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [formData, setFormData] = useState({ nom: '', telephone: '' });
   const [filterDettes, setFilterDettes] = useState(false);
-
+  
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
   const { token } = useAuthStore();
 
   useEffect(() => {
@@ -24,8 +25,8 @@ export default function Clients() {
     setLoading(true);
     try {
       const url = filterDettes 
-        ? 'http://localhost:8000/api/clients?avec_dettes=1'
-        : 'http://localhost:8000/api/clients';
+        ? `${API_URL}/clients?avec_dettes=1`
+        : `${API_URL}/clients`;
       
       const response = await fetchWithAuth(url, { method: 'GET' });
       const data = await response.json();
@@ -48,9 +49,9 @@ export default function Clients() {
 
     try {
       const url = editingClient
-        ? `http://localhost:8000/api/clients/${editingClient.id}`
-        : 'http://localhost:8000/api/clients';
-      
+        ? `${API_URL}/clients/${editingClient.id}`
+        : `${API_URL}/clients`;
+
       const method = editingClient ? 'PUT' : 'POST';
       
       const response = await fetchWithAuth(url, {
@@ -85,7 +86,7 @@ export default function Clients() {
     if (!confirm('Voulez-vous vraiment supprimer ce client ?')) return;
 
     try {
-      const response = await fetchWithAuth(`http://localhost:8000/api/clients/${id}`, {
+      const response = await fetchWithAuth(`${API_URL}/clients/${id}`, {
         method: 'DELETE'
       });
       const result = await response.json();

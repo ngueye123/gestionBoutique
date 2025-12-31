@@ -21,6 +21,7 @@ export default function POS() {
   
   const { items, addItem, removeItem, updateQuantity, total, clearCart } = useCartStore();
   const { token } = useAuthStore();
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
   // ✅ Fonction utilitaire pour convertir solde_dette en nombre
   const getSoldeDette = (solde: any): number => {
@@ -42,7 +43,7 @@ export default function POS() {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetchWithAuth('http://localhost:8000/api/products', {
+      const response = await fetchWithAuth(`${API_URL}/products`, {
         method: 'GET',
       });
       const data = await response.json();
@@ -57,7 +58,7 @@ export default function POS() {
   const searchClients = async () => {
     try {
       const response = await fetchWithAuth(
-        `http://localhost:8000/api/clients/search?q=${clientSearch}`,
+        `${API_URL}/clients/search?q=${clientSearch}`,
         { method: 'GET' }
       );
       const data = await response.json();
@@ -76,7 +77,7 @@ export default function POS() {
     }
 
     try {
-      const response = await fetchWithAuth('http://localhost:8000/api/clients', {
+      const response = await fetchWithAuth(`${API_URL}/clients`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newClient),
@@ -120,7 +121,7 @@ export default function POS() {
         client_id: paymentMethod === 'dette' && selectedClient ? selectedClient.id : null,
       };
 
-      const response = await fetchWithAuth('http://localhost:8000/api/ventes', {
+      const response = await fetchWithAuth(`${API_URL}/ventes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(saleData),
@@ -191,7 +192,7 @@ export default function POS() {
             >
               <h3 className="font-medium truncate">{product.name}</h3>
               <p className="text-sm text-gray-500">{product.reference}</p>
-              <p className="text-lg font-bold mt-2">{product.price.toFixed(2)} €</p>
+              <p className="text-lg font-bold mt-2">{product.price.toFixed(2)} F</p>
               <p className={`text-sm ${product.stock <= product.min_stock ? 'text-red-600 font-semibold' : 'text-gray-500'}`}>
                 Stock: {product.stock}
               </p>
@@ -216,7 +217,7 @@ export default function POS() {
               <div key={item.id} className="flex items-center justify-between py-2 border-b">
                 <div className="flex-1">
                   <h3 className="font-medium">{item.name}</h3>
-                  <p className="text-sm text-gray-500">{item.price.toFixed(2)} €</p>
+                  <p className="text-sm text-gray-500">{item.price.toFixed(2)} F</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   <button
@@ -248,7 +249,7 @@ export default function POS() {
         <div className="border-t pt-4 mt-4">
           <div className="flex justify-between text-lg font-bold mb-4">
             <span>Total</span>
-            <span>{total.toFixed(2)} €</span>
+            <span>{total.toFixed(2)} F</span>
           </div>
           <button
             onClick={() => setShowPaymentModal(true)}
@@ -282,7 +283,6 @@ export default function POS() {
                   <option value="especes">Espèces</option>
                   <option value="wave">Wave</option>
                   <option value="orange_money">Orange Money</option>
-                  <option value="carte">Carte bancaire</option>
                   <option value="dette">Dette (Crédit client)</option>
                 </select>
               </div>
@@ -290,7 +290,7 @@ export default function POS() {
               <div className="bg-gray-50 p-3 rounded-md">
                 <div className="flex justify-between text-lg font-bold">
                   <span>Total à payer:</span>
-                  <span>{total.toFixed(2)} €</span>
+                  <span>{total.toFixed(2)} F</span>
                 </div>
               </div>
 
@@ -309,7 +309,7 @@ export default function POS() {
                   />
                   {receivedAmount >= total && receivedAmount > 0 && (
                     <p className="text-green-600 mt-2 font-semibold">
-                      Monnaie: {(receivedAmount - total).toFixed(2)} €
+                      Monnaie: {(receivedAmount - total).toFixed(2)} F
                     </p>
                   )}
                   {receivedAmount > 0 && receivedAmount < total && (
@@ -358,7 +358,7 @@ export default function POS() {
                               <span className={`text-sm font-semibold ${
                                 soldeDette > 0 ? 'text-red-600' : 'text-green-600'
                               }`}>
-                                {soldeDette.toFixed(2)} €
+                                {soldeDette.toFixed(2)} F
                               </span>
                             </button>
                           );
@@ -390,13 +390,13 @@ export default function POS() {
                       <div className="mt-2 text-sm">
                         <span className="text-gray-600">Dette actuelle: </span>
                         <span className="font-semibold text-red-600">
-                          {getSoldeDette(selectedClient.solde_dette).toFixed(2)} €
+                          {getSoldeDette(selectedClient.solde_dette).toFixed(2)} F
                         </span>
                       </div>
                       <div className="mt-1 text-sm">
                         <span className="text-gray-600">Nouvelle dette: </span>
                         <span className="font-semibold text-orange-600">
-                          {(getSoldeDette(selectedClient.solde_dette) + total).toFixed(2)} €
+                          {(getSoldeDette(selectedClient.solde_dette) + total).toFixed(2)} F
                         </span>
                       </div>
                     </div>

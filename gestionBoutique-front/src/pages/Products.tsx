@@ -26,6 +26,7 @@ function Products() {
   const [viewMode, setViewMode] = useState<'view' | 'edit'>('view');
 
   const { user } = useAuthStore();
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<ProductForm>({
     resolver: zodResolver(productSchema),
@@ -50,7 +51,7 @@ function Products() {
 
   const fetchProducts = async () => {
     try {
-      const resp = await fetchWithAuth('http://localhost:8000/api/products', {
+      const resp = await fetchWithAuth(`${API_URL}/products`, {
         method: 'GET'
       });
       const data = await resp.json();
@@ -72,8 +73,8 @@ function Products() {
 
     try {
       const url = editingProduct
-        ? `http://localhost:8000/api/products/${editingProduct.id}`
-        : 'http://localhost:8000/api/products';
+        ? `${API_URL}/products/${editingProduct.id}`
+        : `${API_URL}/products`;
 
       const method = editingProduct ? 'PUT' : 'POST';
 
@@ -108,7 +109,7 @@ function Products() {
     if (!confirm('Voulez-vous vraiment supprimer ce produit ?')) return;
 
     try {
-      const resp = await fetchWithAuth(`http://localhost:8000/api/products/${id}`, {
+      const resp = await fetchWithAuth(`${API_URL}/products/${id}`, {
         method: 'DELETE'
       });
       const result = await resp.json();

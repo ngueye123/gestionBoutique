@@ -31,13 +31,13 @@ function Register() {
   const { register, handleSubmit, formState: { errors }, watch } = useForm<RegisterForm>({
     resolver: zodResolver(registerSchema),
   });
-
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
   const password = watch('mot_de_passe', '');
 
   const onSubmit = async (data: RegisterForm) => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/register', {
+      const response = await fetch(`${API_URL}/register`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
