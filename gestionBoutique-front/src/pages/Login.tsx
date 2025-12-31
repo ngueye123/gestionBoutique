@@ -31,7 +31,7 @@ function Login() {
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
   const onSubmit = async (data: LoginForm) => {
-  setLoading(true);
+    setLoading(true);
     try {
       if (!API_URL) {
         throw new Error('API_URL non configurée');
@@ -44,30 +44,27 @@ function Login() {
         body: JSON.stringify(data),
       });
 
-
       const result = await response.json();
 
       if (result.success) {
-        // Stocker les informations utilisateur selon le type
         if (userType === 'patron') {
           const patronUser: PatronUser = {
             id: result.user.id,
             nom: result.user.nom,
             prenom: result.user.prenom,
             email: result.user.email,
-            user_type: 'patron',  // ← IMPORTANT
+            user_type: 'patron',
             email_verified: result.user.email_verified
           };
           setAuth(patronUser, result.token);
         } else {
-          // Pour les employés
           const employeUser: EmployeUser = {
             id: result.employe.id,
             nom: result.employe.nom,
             prenom: result.employe.prenom || '',
             email: result.employe.email,
             role: result.employe.role as 'admin' | 'vendeur' | 'caissier',
-            user_type: 'employe',  // ← IMPORTANT
+            user_type: 'employe',
             utilisateur_id: result.employe.utilisateur_id
           };
           setAuth(employeUser, result.token);
@@ -76,7 +73,6 @@ function Login() {
         toast.success(`Connexion réussie en tant que ${userType}`);
         navigate('/');
       } else {
-        // Vérifier si c'est une erreur de vérification d'email
         if (result.email_verified === false) {
           setUnverifiedEmail(data.email);
           toast.error(result.message);
@@ -98,7 +94,6 @@ function Login() {
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold mb-4">Connexion</h1>
           
-          {/* Sélecteur de type d'utilisateur */}
           <div className="flex bg-gray-100 rounded-lg p-1 mb-4">
             <button
               type="button"
@@ -141,18 +136,13 @@ function Login() {
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Mot de passe</label>
-            <input
-              type="password"
-              {...register('mot_de_passe')}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200"
-              placeholder="••••••••"
-            />
-            {errors.mot_de_passe && (
-              <p className="text-red-500 text-sm mt-1">{errors.mot_de_passe.message}</p>
-            )}
-          </div>
+          <PasswordInput
+            label="Mot de passe"
+            name="mot_de_passe"
+            register={register('mot_de_passe')}
+            placeholder="••••••••"
+            error={errors.mot_de_passe?.message}
+          />
 
           {userType === 'patron' && (
             <div className="text-right">

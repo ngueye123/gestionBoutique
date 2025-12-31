@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -36,17 +36,52 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return token ? <>{children}</> : <Navigate to="/login" replace />
 }
 
+// Composant pour vérifier périodiquement le token
+function TokenChecker() {
+  const navigate = useNavigate();
+  const { token, logout } = useAuthStore();
+
+  useEffect(() => {
+    if (!token) return;
+
+    // Vérifier l'âge du token toutes les 5 minutes
+    const checkTokenAge = () => {
+      const tokenTimestamp = localStorage.getItem('tokenTimestamp');
+      
+      if (tokenTimestamp) {
+        const tokenAge = Date.now() - parseInt(tokenTimestamp);
+        const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
+        
+        if (tokenAge > thirtyDaysInMs) {
+          // Token expiré
+          logout();
+          navigate('/login', { replace: true });
+        }
+      }
+    };
+
+    // Vérifier immédiatement
+    checkTokenAge();
+
+    // Vérifier toutes les 5 minutes
+    const interval = setInterval(checkTokenAge, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [token, logout, navigate]);
+
+  return null;
+}
+
 export default function App() {
   const loadAuthFromStorage = useAuthStore(state => state.loadAuthFromStorage)
 
- // Au montage de App, garder:
-useEffect(() => {
-  useAuthStore.getState().loadAuthFromStorage();
-}, []);
-
+  useEffect(() => {
+    loadAuthFromStorage();
+  }, [loadAuthFromStorage]);
 
   return (
     <BrowserRouter>
+      <TokenChecker />
       <Toaster position="top-right" richColors />
       <Routes>
         <Route path="/login" element={<Login />} />

@@ -1,10 +1,15 @@
-# Node.js (frontend)
-frontend/node_modules
-frontend/.env
+# Laravel
+.env
+storage/logs/*
+bootstrap/cache/*
+vendor/
 
-# Laravel (backend)
-backend/vendor
-backend/node_modules
-backend/.env
-backend/storage/*.key
-backend/storage/logs/*.log
+# React
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.env*
+frontend/build/
+
+# Autres
+.DS_Store

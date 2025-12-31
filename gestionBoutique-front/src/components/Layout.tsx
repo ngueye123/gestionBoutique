@@ -1,14 +1,15 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Package, ShoppingCart, Users, LogOut, User, UserCircle } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import { EmployeUser, PatronUser } from '../types';
+import { EmployeUser } from '../types';
 
 function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { 
     user, 
+    token,
     userType, 
     logout, 
     canManageProducts, 
@@ -17,9 +18,16 @@ function Layout() {
     canViewDashboard 
   } = useAuthStore();
 
+  // Vérifier si l'utilisateur est toujours authentifié
+  useEffect(() => {
+    if (!token || !user) {
+      navigate('/login', { replace: true });
+    }
+  }, [token, user, navigate]);
+
   const handleLogout = async () => {
     await logout();
-    navigate('/login');
+    navigate('/login', { replace: true });
   };
 
   const isActive = (path: string) => location.pathname === path;
@@ -88,7 +96,7 @@ function Layout() {
             </Link>
           )}
 
-          {/* Clients - NOUVEAU */}
+          {/* Clients */}
           {canViewProducts() && (
             <Link to="/clients" className={linkClass('/clients')}>
               <UserCircle className="w-5 h-5 mr-2" />
