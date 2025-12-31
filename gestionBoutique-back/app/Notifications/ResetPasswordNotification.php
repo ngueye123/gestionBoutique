@@ -33,6 +33,6 @@ class ResetPasswordNotification extends Notification
             ->action('Réinitialiser mon mot de passe', $resetUrl)
             ->line('Ce lien expirera dans 60 minutes.')
             ->line('Si vous n\'avez pas demandé de réinitialisation, aucune action n\'est requise.')
-            ->salutation('Cordialement, L\'équipe Shop Manager');
+            ->salutation('Cordialement, L\'équipe Gestion Boutique');
     }
 }

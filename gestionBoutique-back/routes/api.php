@@ -8,6 +8,8 @@ use App\Http\Controllers\EmployeController;
 use App\Http\Controllers\EmployeAuthController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\VenteController;
+use App\Http\Controllers\ClientController;
+use App\Http\Controllers\RemboursementController;
 
 
 // Routes publiques
@@ -41,7 +43,6 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::put('/products/{id}', [ProductController::class, 'update']);
     Route::delete('/products/{id}', [ProductController::class, 'destroy']);
 
-
     // Routes ventes - accessible à tous les utilisateurs connectés
     Route::post('/ventes', [VenteController::class, 'store']);
     Route::get('/ventes', [VenteController::class, 'index']);
@@ -51,10 +52,22 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
     
     // Routes employés - seulement patron
-   
     Route::post('/employes', [EmployeController::class, 'store']);
     Route::get('/employes', [EmployeController::class, 'index']);
     Route::delete('/employes/{id}', [EmployeController::class, 'destroy']);
     Route::put('/employes/{id}/role', [EmployeController::class, 'updateRole']);
    
+    // ========== ROUTES CLIENTS ==========
+    Route::get('/clients', [ClientController::class, 'index']);
+    Route::post('/clients', [ClientController::class, 'store']);
+    Route::get('/clients/search', [ClientController::class, 'search']); // Autocomplétion
+    Route::get('/clients/{id}', [ClientController::class, 'show']);
+    Route::put('/clients/{id}', [ClientController::class, 'update']);
+    Route::delete('/clients/{id}', [ClientController::class, 'destroy']);
+    
+    // ========== ROUTES REMBOURSEMENTS ==========
+    Route::post('/remboursements', [RemboursementController::class, 'store']);
+    Route::get('/remboursements', [RemboursementController::class, 'index']);
+    Route::get('/remboursements/{id}', [RemboursementController::class, 'show']);
+    Route::get('/clients/{id}/remboursements', [RemboursementController::class, 'historiqueClient']);
 });

@@ -10,10 +10,12 @@ class Vente extends Model
 {
     protected $table = 'ventes';
     public $timestamps = false;
+    
     protected $fillable = [
         'reference',
         'utilisateur_id',
         'employe_id',
+        'client_id', // ← AJOUT pour les ventes à crédit
         'total',
         'moyen_paiement',
         'montant_recu',
@@ -53,12 +55,45 @@ class Vente extends Model
     }
 
     /**
+     * Relation avec le client (pour ventes à crédit)
+     */
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(Client::class, 'client_id');
+    }
+
+    /**
+     * Vérifier si c'est une vente à crédit
+     */
+    public function estVenteACredit(): bool
+    {
+        return $this->moyen_paiement === 'dette' && $this->client_id !== null;
+    }
+
+    /**
      * Générer une référence unique pour la vente
      */
+   /**
+ * Générer une référence unique pour la vente
+ */
     public static function generateReference(): string
     {
         $date = now()->format('Ymd');
-        $count = self::whereDate('created_at', today())->count() + 1;
+        
+        // Trouver la dernière référence du jour
+        $lastVente = self::whereDate('created_at', today())
+            ->orderBy('id', 'desc')
+            ->first();
+        
+        $count = 1;
+        if ($lastVente && $lastVente->reference) {
+            // Extraire le numéro de la dernière référence
+            preg_match('/VT-\d{8}-(\d{4})/', $lastVente->reference, $matches);
+            if (isset($matches[1])) {
+                $count = intval($matches[1]) + 1;
+            }
+        }
+        
         return 'VT-' . $date . '-' . str_pad($count, 4, '0', STR_PAD_LEFT);
     }
 
@@ -84,5 +119,14 @@ class Vente extends Model
     public function scopeBetweenDates($query, $startDate, $endDate)
     {
         return $query->whereBetween('created_at', [$startDate, $endDate]);
+    }
+
+    /**
+     * Scope pour les ventes à crédit uniquement
+     */
+    public function scopeVentesCredit($query)
+    {
+        return $query->where('moyen_paiement', 'dette')
+                     ->whereNotNull('client_id');
     }
 }

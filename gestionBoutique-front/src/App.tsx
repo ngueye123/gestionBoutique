@@ -13,6 +13,8 @@ import Employes from './pages/Employes'
 import Layout from './components/Layout'
 import { RoleGuard } from './components/RoleGuard'
 import { useAuthStore } from './store/authStore'
+import Clients from './pages/Clients'
+import ClientDetails from './pages/ClientDetails'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore(state => state.token)
@@ -97,6 +99,26 @@ useEffect(() => {
             element={
               <RoleGuard requirePatron>
                 <Employes />
+              </RoleGuard>
+            } 
+          />
+
+          {/* Route Clients - Accessible à tous les utilisateurs connectés */}
+          <Route 
+            path="clients" 
+            element={
+              <RoleGuard allowedRoles={['patron', 'admin', 'vendeur', 'caissier']}>
+                <Clients />
+              </RoleGuard>
+            } 
+          />
+
+          {/* Route Détails Client - Accessible à tous les utilisateurs connectés */}
+          <Route 
+            path="clients/:id" 
+            element={
+              <RoleGuard allowedRoles={['patron', 'admin', 'vendeur', 'caissier']}>
+                <ClientDetails />
               </RoleGuard>
             } 
           />

@@ -1,4 +1,4 @@
-// Types pour la gestion des rôles et utilisateurs
+// ========== TYPES UTILISATEURS ==========
 export interface PatronUser {
   id: number
   nom: string
@@ -21,6 +21,7 @@ export interface EmployeUser {
 
 export type User = PatronUser | EmployeUser
 
+// ========== TYPES PRODUITS ==========
 export interface Product {
   id: string
   reference: string
@@ -36,6 +37,99 @@ export interface CartItem extends Product {
   quantity: number
 }
 
+// ========== TYPES CLIENTS ET DETTES (NOUVEAUX) ==========
+
+export interface Client {
+  id: number
+  nom: string
+  telephone: string
+  utilisateur_id: number
+  solde_dette: number
+  created_at: string
+  updated_at: string
+  remboursements?: Remboursement[]
+  ventes?: VenteCredit[]
+}
+
+export interface Remboursement {
+  id: number
+  client_id: number
+  utilisateur_id: number
+  employe_id: number | null
+  montant: number
+  moyen_paiement: 'especes' | 'wave' | 'orange_money' | 'carte'
+  note: string | null
+  created_at: string
+  client?: Client
+  employe?: EmployeUser
+}
+
+export interface VenteCredit {
+  id: number
+  reference: string
+  utilisateur_id: number
+  employe_id: number | null
+  client_id: number
+  total: number
+  moyen_paiement: 'dette'
+  created_at: string
+  client?: Client
+  details?: VenteDetail[]
+}
+
+export interface VenteDetail {
+  id: number
+  vente_id: number
+  product_id: number
+  reference_produit: string
+  nom_produit: string
+  quantite: number
+  prix_unitaire: number
+  sous_total: number
+}
+
+// Type pour le formulaire de création de client
+export interface ClientFormData {
+  nom: string
+  telephone: string
+}
+
+// Type pour le formulaire de remboursement
+export interface RemboursementFormData {
+  client_id: number
+  montant: number
+  moyen_paiement: 'especes' | 'wave' | 'orange_money' | 'carte'
+  note?: string
+}
+
+// ========== TYPES RÉPONSES API CLIENTS ==========
+export interface ClientsResponse {
+  success: boolean
+  clients: Client[]
+  message?: string
+}
+
+export interface ClientResponse {
+  success: boolean
+  client: Client
+  message?: string
+}
+
+export interface RemboursementResponse {
+  success: boolean
+  remboursement: Remboursement
+  nouveau_solde: number
+  message?: string
+}
+
+export interface RemboursementHistoryResponse {
+  success: boolean
+  client: Client
+  remboursements: Remboursement[]
+  total_rembourse: number
+}
+
+// ========== TYPES DASHBOARD ==========
 export interface DashboardStats {
   totalProducts: number
   lowStockProducts: number
@@ -82,7 +176,7 @@ export interface StockAlert {
   minStock: number
 }
 
-// Types pour les réponses API d'authentification
+// ========== TYPES AUTH ==========
 export interface AuthResponse {
   success: boolean
   message: string
@@ -93,13 +187,11 @@ export interface AuthResponse {
   user_type?: 'patron' | 'employe'
 }
 
-// Types pour les réponses de vérification d'email
 export interface VerifyEmailResponse {
   success: boolean
   message: string
 }
 
-// Types pour les réponses de réinitialisation de mot de passe
 export interface ForgotPasswordResponse {
   success: boolean
   message: string
@@ -110,14 +202,13 @@ export interface ResetPasswordResponse {
   message: string
 }
 
-// Types pour les notifications d'erreur
 export interface ErrorResponse {
   success: false
   message: string
   email_verified?: boolean
 }
 
-// Type pour les employes (gestion)
+// ========== TYPES EMPLOYÉS ==========
 export interface Employe {
   id: number
   nom: string
@@ -126,7 +217,7 @@ export interface Employe {
   utilisateur_id?: number
 }
 
-// Types pour les formulaires
+// ========== TYPES FORMULAIRES ==========
 export interface LoginFormData {
   email: string
   mot_de_passe: string

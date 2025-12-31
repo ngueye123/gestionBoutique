@@ -266,7 +266,7 @@ function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Ventes période</p>
-              <p className="text-2xl font-bold text-gray-800">{stats.periodTotal?.toFixed(2) || '0.00'} €</p>
+              <p className="text-2xl font-bold text-gray-800">{stats.periodTotal?.toFixed(2) || '0.00'} F</p>
               <p className="text-xs text-gray-500">{stats.periodCount || 0} vente(s)</p>
             </div>
             <div className="p-3 bg-green-100 rounded-full">
@@ -279,7 +279,7 @@ function Dashboard() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-600">Ventes aujourd'hui</p>
-              <p className="text-2xl font-bold text-gray-800">{stats.todaySales?.toFixed(2) || '0.00'} €</p>
+              <p className="text-2xl font-bold text-gray-800">{stats.todaySales?.toFixed(2) || '0.00'} F</p>
             </div>
             <div className="p-3 bg-purple-100 rounded-full">
               <TrendingUp className="w-6 h-6 text-purple-600" />
@@ -312,7 +312,7 @@ function Dashboard() {
                     </span>
                   </div>
                   <span className={`font-semibold ${sale.amount > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-                    {sale.amount.toFixed(2)} €
+                    {sale.amount.toFixed(2)} F
                   </span>
                 </div>
               ))

@@ -205,7 +205,7 @@ function Products() {
                 <td className="px-6 py-4 whitespace-nowrap font-mono text-sm">{product.reference}</td>
                 <td className="px-6 py-4 whitespace-nowrap font-medium">{product.name}</td>
                 <td className="px-6 py-4 whitespace-nowrap text-gray-600">{product.category}</td>
-                <td className="px-6 py-4 whitespace-nowrap font-semibold">€{product.price.toFixed(2)}</td>
+                <td className="px-6 py-4 whitespace-nowrap font-semibold">{product.price.toFixed(2)} F</td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                     product.stock <= product.min_stock
@@ -313,7 +313,7 @@ function Products() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700">Prix (€)</label>
+                <label className="block text-sm font-medium text-gray-700">Prix (FCFA)</label>
                 <input
                   type="number"
                   step="0.01"

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Vente;
 use App\Models\VenteDetail;
 use App\Models\Product;
+use App\Models\Client;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +17,7 @@ class VenteController extends Controller
     use RoleHelper;
 
     /**
-     * Enregistrer une nouvelle vente
+     * Enregistrer une nouvelle vente (avec support des dettes)
      * POST /api/ventes
      */
     public function store(Request $request): JsonResponse
@@ -25,8 +26,9 @@ class VenteController extends Controller
             'items' => 'required|array|min:1',
             'items.*.id' => 'required|integer|exists:products,id',
             'items.*.quantity' => 'required|integer|min:1',
-            'moyen_paiement' => 'required|in:especes,wave,orange_money,carte',
+            'moyen_paiement' => 'required|in:especes,wave,orange_money,carte,dette',
             'montant_recu' => 'nullable|numeric|min:0',
+            'client_id' => 'required_if:moyen_paiement,dette|nullable|integer|exists:clients,id',
         ]);
 
         DB::beginTransaction();
@@ -69,7 +71,7 @@ class VenteController extends Controller
                 ];
             }
 
-            // Vérifier le montant reçu pour paiement en espèces
+            // Validation spécifique selon le moyen de paiement
             if ($validated['moyen_paiement'] === 'especes') {
                 if (!isset($validated['montant_recu']) || $validated['montant_recu'] < $total) {
                     return response()->json([
@@ -79,11 +81,27 @@ class VenteController extends Controller
                 }
             }
 
+            // Pour les ventes à crédit, vérifier que le client existe
+            $clientId = null;
+            $client = null;
+            if ($validated['moyen_paiement'] === 'dette') {
+                if (!isset($validated['client_id'])) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Client requis pour une vente à crédit'
+                    ], 400);
+                }
+
+                $client = Client::byUtilisateur($ownerId)->findOrFail($validated['client_id']);
+                $clientId = $client->id;
+            }
+
             // Créer la vente
             $vente = Vente::create([
-                'reference' => Vente::generateReference(),
+               // 'reference' => Vente::generateReference(),
                 'utilisateur_id' => $ownerId,
                 'employe_id' => $employeId,
+                'client_id' => $clientId,
                 'total' => $total,
                 'moyen_paiement' => $validated['moyen_paiement'],
                 'montant_recu' => $validated['montant_recu'] ?? $total,
@@ -94,7 +112,6 @@ class VenteController extends Controller
             foreach ($venteItems as $venteItem) {
                 $product = $venteItem['product'];
 
-                // Créer le détail de vente
                 VenteDetail::create([
                     'vente_id' => $vente->id,
                     'product_id' => $product->id,
@@ -105,19 +122,24 @@ class VenteController extends Controller
                     'sous_total' => $venteItem['sous_total'],
                 ]);
 
-                // Mettre à jour le stock
                 $product->decrement('stock', $venteItem['quantity']);
+            }
+
+            // Si c'est une vente à crédit, ajouter au solde du client
+            if ($validated['moyen_paiement'] === 'dette' && $client) {
+                $client->ajouterDette($total);
             }
 
             DB::commit();
 
-            // Charger les détails pour la réponse
-            $vente->load('details');
+            // Charger les relations pour la réponse
+            $vente->load('details', 'client');
 
             return response()->json([
                 'success' => true,
                 'message' => 'Vente enregistrée avec succès',
-                'vente' => $vente
+                'vente' => $vente,
+                'nouveau_solde_client' => $client ? $client->fresh()->solde_dette : null
             ], 201);
 
         } catch (\Exception $e) {
@@ -134,14 +156,14 @@ class VenteController extends Controller
 
     /**
      * Liste des ventes
-     * GET /api/ventes
+     * GET /api/ventes?client_id=X&type=credit
      */
     public function index(Request $request): JsonResponse
     {
         try {
             $ownerId = $this->getOwnerId();
             
-            $query = Vente::with('details', 'employe')
+            $query = Vente::with('details', 'employe', 'client')
                 ->where('utilisateur_id', $ownerId)
                 ->orderBy('created_at', 'desc');
 
@@ -153,6 +175,16 @@ class VenteController extends Controller
             // Filtrer par période si fournie
             if ($request->has('start_date') && $request->has('end_date')) {
                 $query->betweenDates($request->start_date, $request->end_date);
+            }
+
+            // Filtrer par client si fourni
+            if ($request->has('client_id')) {
+                $query->where('client_id', $request->client_id);
+            }
+
+            // Filtrer par type (credit uniquement)
+            if ($request->input('type') === 'credit') {
+                $query->ventesCredit();
             }
 
             $ventes = $query->paginate(20);
@@ -181,7 +213,7 @@ class VenteController extends Controller
         try {
             $ownerId = $this->getOwnerId();
             
-            $vente = Vente::with('details', 'employe')
+            $vente = Vente::with('details', 'employe', 'client')
                 ->where('utilisateur_id', $ownerId)
                 ->findOrFail($id);
 

@@ -1,31 +1,49 @@
 import React, { useState, useEffect } from 'react';
-import { Search, ShoppingCart, Plus, Minus, X } from 'lucide-react';
+import { Search, ShoppingCart, Plus, Minus, X, User } from 'lucide-react';
 import { toast } from 'sonner';
-import { Product } from '../types';
+import { Product, Client } from '../types';
 import { useCartStore } from '../store/cartStore';
 import { useAuthStore } from '../store/authStore';
+import { fetchWithAuth } from '../lib/fetchWithAuth';
 
-function POS() {
+export default function POS() {
   const [products, setProducts] = useState<Product[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [clientSearch, setClientSearch] = useState('');
   const [receivedAmount, setReceivedAmount] = useState<number>(0);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'especes' | 'wave' | 'orange_money' | 'carte'>('especes');
+  const [paymentMethod, setPaymentMethod] = useState<'especes' | 'wave' | 'orange_money' | 'carte' | 'dette'>('especes');
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  const [showClientForm, setShowClientForm] = useState(false);
+  const [newClient, setNewClient] = useState({ nom: '', telephone: '' });
   const [loading, setLoading] = useState(false);
   
   const { items, addItem, removeItem, updateQuantity, total, clearCart } = useCartStore();
   const { token } = useAuthStore();
 
+  // ✅ Fonction utilitaire pour convertir solde_dette en nombre
+  const getSoldeDette = (solde: any): number => {
+    const parsed = parseFloat(String(solde || 0));
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   useEffect(() => {
     fetchProducts();
   }, []);
 
+  useEffect(() => {
+    if (clientSearch.length >= 2) {
+      searchClients();
+    } else {
+      setClients([]);
+    }
+  }, [clientSearch]);
+
   const fetchProducts = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/products', {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
+      const response = await fetchWithAuth('http://localhost:8000/api/products', {
+        method: 'GET',
       });
       const data = await response.json();
       if (data.success) {
@@ -36,40 +54,75 @@ function POS() {
     }
   };
 
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    product.reference.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const searchClients = async () => {
+    try {
+      const response = await fetchWithAuth(
+        `http://localhost:8000/api/clients/search?q=${clientSearch}`,
+        { method: 'GET' }
+      );
+      const data = await response.json();
+      if (data.success) {
+        setClients(data.clients);
+      }
+    } catch (error) {
+      console.error('Erreur recherche clients', error);
+    }
+  };
+
+  const createClient = async () => {
+    if (!newClient.nom || !newClient.telephone) {
+      toast.error('Nom et téléphone requis');
+      return;
+    }
+
+    try {
+      const response = await fetchWithAuth('http://localhost:8000/api/clients', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newClient),
+      });
+      const result = await response.json();
+
+      if (result.success) {
+        toast.success('Client créé !');
+        setSelectedClient(result.client);
+        setShowClientForm(false);
+        setNewClient({ nom: '', telephone: '' });
+      } else {
+        toast.error(result.message);
+      }
+    } catch (error) {
+      toast.error('Erreur lors de la création du client');
+    }
+  };
 
   const handlePayment = async () => {
-    // Validation pour paiement en espèces
-    if (paymentMethod === 'especes') {
-      if (receivedAmount < total) {
-        toast.error('Le montant reçu est insuffisant');
-        return;
-      }
+    if (paymentMethod === 'especes' && receivedAmount < total) {
+      toast.error('Le montant reçu est insuffisant');
+      return;
+    }
+
+    if (paymentMethod === 'dette' && !selectedClient) {
+      toast.error('Veuillez sélectionner un client');
+      return;
     }
 
     setLoading(true);
 
     try {
-      // Préparer les données de la vente
       const saleData = {
         items: items.map(item => ({
           id: parseInt(item.id),
           quantity: item.quantity
         })),
         moyen_paiement: paymentMethod,
-        montant_recu: paymentMethod === 'especes' ? receivedAmount : total
+        montant_recu: paymentMethod === 'especes' ? receivedAmount : total,
+        client_id: paymentMethod === 'dette' && selectedClient ? selectedClient.id : null,
       };
 
-      // Envoyer la vente au backend
-      const response = await fetch('http://localhost:8000/api/ventes', {
+      const response = await fetchWithAuth('http://localhost:8000/api/ventes', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(saleData),
       });
 
@@ -78,19 +131,21 @@ function POS() {
       if (result.success) {
         const change = paymentMethod === 'especes' ? receivedAmount - total : 0;
         
-        if (change > 0) {
+        if (paymentMethod === 'dette') {
+          const nouveauSolde = getSoldeDette(result.nouveau_solde_client);
+          toast.success(`Vente à crédit enregistrée ! Dette du client: ${nouveauSolde.toFixed(2)} €`);
+        } else if (change > 0) {
           toast.success(`Vente enregistrée ! Monnaie à rendre : ${change.toFixed(2)} €`);
         } else {
           toast.success('Vente enregistrée avec succès !');
         }
 
-        // Réinitialiser
         clearCart();
         setShowPaymentModal(false);
         setReceivedAmount(0);
         setPaymentMethod('especes');
-        
-        // Rafraîchir les produits pour mettre à jour les stocks
+        setSelectedClient(null);
+        setClientSearch('');
         fetchProducts();
       } else {
         toast.error(result.message || 'Erreur lors de l\'enregistrement de la vente');
@@ -103,9 +158,13 @@ function POS() {
     }
   };
 
+  const filteredProducts = products.filter(product =>
+    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    product.reference.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
     <div className="h-[calc(100vh-2rem)] flex gap-4">
-      {/* Products Section */}
       <div className="flex-1 bg-white rounded-lg shadow-sm p-4 overflow-hidden flex flex-col">
         <div className="mb-4">
           <div className="relative">
@@ -141,7 +200,6 @@ function POS() {
         </div>
       </div>
 
-      {/* Cart Section */}
       <div className="w-96 bg-white rounded-lg shadow-sm p-4 flex flex-col">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-bold">Panier</h2>
@@ -202,10 +260,9 @@ function POS() {
         </div>
       </div>
 
-      {/* Payment Modal */}
       {showPaymentModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg w-full max-w-md">
+          <div className="bg-white p-6 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold mb-4">Paiement</h2>
             
             <div className="space-y-4">
@@ -215,13 +272,18 @@ function POS() {
                 </label>
                 <select
                   value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as typeof paymentMethod)}
+                  onChange={(e) => {
+                    setPaymentMethod(e.target.value as typeof paymentMethod);
+                    setSelectedClient(null);
+                    setClientSearch('');
+                  }}
                   className="w-full p-2 border rounded-md"
                 >
                   <option value="especes">Espèces</option>
                   <option value="wave">Wave</option>
                   <option value="orange_money">Orange Money</option>
                   <option value="carte">Carte bancaire</option>
+                  <option value="dette">Dette (Crédit client)</option>
                 </select>
               </div>
 
@@ -258,11 +320,142 @@ function POS() {
                 </div>
               )}
 
+              {paymentMethod === 'dette' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Rechercher un client
+                    </label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                      <input
+                        type="text"
+                        value={clientSearch}
+                        onChange={(e) => setClientSearch(e.target.value)}
+                        placeholder="Nom ou téléphone..."
+                        className="w-full pl-9 pr-4 py-2 border rounded-md"
+                      />
+                    </div>
+                    
+                    {clients.length > 0 && (
+                      <div className="mt-2 max-h-40 overflow-y-auto border rounded-md">
+                        {clients.map(client => {
+                          const soldeDette = getSoldeDette(client.solde_dette);
+                          return (
+                            <button
+                              key={client.id}
+                              onClick={() => {
+                                setSelectedClient(client);
+                                setClients([]);
+                                setClientSearch(client.nom);
+                              }}
+                              className="w-full p-2 text-left hover:bg-gray-50 flex justify-between items-center"
+                            >
+                              <div>
+                                <div className="font-medium">{client.nom}</div>
+                                <div className="text-xs text-gray-500">{client.telephone}</div>
+                              </div>
+                              <span className={`text-sm font-semibold ${
+                                soldeDette > 0 ? 'text-red-600' : 'text-green-600'
+                              }`}>
+                                {soldeDette.toFixed(2)} €
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedClient ? (
+                    <div className="bg-blue-50 p-3 rounded-md">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-medium flex items-center">
+                            <User className="w-4 h-4 mr-2" />
+                            {selectedClient.nom}
+                          </div>
+                          <div className="text-sm text-gray-600">{selectedClient.telephone}</div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setSelectedClient(null);
+                            setClientSearch('');
+                          }}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                      <div className="mt-2 text-sm">
+                        <span className="text-gray-600">Dette actuelle: </span>
+                        <span className="font-semibold text-red-600">
+                          {getSoldeDette(selectedClient.solde_dette).toFixed(2)} €
+                        </span>
+                      </div>
+                      <div className="mt-1 text-sm">
+                        <span className="text-gray-600">Nouvelle dette: </span>
+                        <span className="font-semibold text-orange-600">
+                          {(getSoldeDette(selectedClient.solde_dette) + total).toFixed(2)} €
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setShowClientForm(true)}
+                      className="w-full p-3 border-2 border-dashed border-gray-300 rounded-md text-gray-600 hover:border-blue-400 hover:text-blue-600 flex items-center justify-center"
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      Créer un nouveau client
+                    </button>
+                  )}
+
+                  {showClientForm && (
+                    <div className="border rounded-md p-3 space-y-3">
+                      <h3 className="font-medium">Nouveau client</h3>
+                      <input
+                        type="text"
+                        placeholder="Nom complet"
+                        value={newClient.nom}
+                        onChange={(e) => setNewClient({ ...newClient, nom: e.target.value })}
+                        className="w-full p-2 border rounded-md"
+                      />
+                      <input
+                        type="tel"
+                        placeholder="Téléphone"
+                        value={newClient.telephone}
+                        onChange={(e) => setNewClient({ ...newClient, telephone: e.target.value })}
+                        className="w-full p-2 border rounded-md"
+                      />
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={() => {
+                            setShowClientForm(false);
+                            setNewClient({ nom: '', telephone: '' });
+                          }}
+                          className="flex-1 px-3 py-2 border rounded-md hover:bg-gray-50"
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          onClick={createClient}
+                          className="flex-1 px-3 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
+                        >
+                          Créer
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="flex justify-end space-x-2 mt-6">
                 <button
                   onClick={() => {
                     setShowPaymentModal(false);
                     setReceivedAmount(0);
+                    setSelectedClient(null);
+                    setClientSearch('');
                   }}
                   className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
                   disabled={loading}
@@ -271,7 +464,11 @@ function POS() {
                 </button>
                 <button
                   onClick={handlePayment}
-                  disabled={loading || (paymentMethod === 'especes' && receivedAmount < total)}
+                  disabled={
+                    loading ||
+                    (paymentMethod === 'especes' && receivedAmount < total) ||
+                    (paymentMethod === 'dette' && !selectedClient)
+                  }
                   className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   {loading ? 'Traitement...' : 'Confirmer le paiement'}
@@ -284,5 +481,3 @@ function POS() {
     </div>
   );
 }
-
-export default POS;

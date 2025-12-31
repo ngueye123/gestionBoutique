@@ -66,7 +66,7 @@ class EmployeAuthController extends Controller
             if (!$token) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Token manquant'
+                    'message' => 'Token manquant '
                 ], 400);
             }
             

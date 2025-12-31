@@ -11,6 +11,7 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 class Utilisateur extends Authenticatable implements JWTSubject, MustVerifyEmail
 {
     use HasFactory, Notifiable;
+    
 
     protected $table = 'utilisateurs';
     protected $primaryKey = 'id';
