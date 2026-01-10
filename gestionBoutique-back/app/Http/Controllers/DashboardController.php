@@ -174,7 +174,7 @@ class DashboardController extends Controller
             ->where('utilisateur_id', $ownerId)
             ->whereBetween('created_at', [$startDate, $endDate])
             ->groupBy(DB::raw('DATE(created_at)'))
-            ->orderBy('date', 'asc')
+            ->orderBy('date', 'desc')
             ->get();
 
         // Créer un tableau complet de toutes les dates de la période
@@ -193,6 +193,7 @@ class DashboardController extends Controller
             
             $currentDate->addDay();
         }
+        $history = array_reverse($history);
 
         $total = array_sum(array_column($history, 'amount'));
         $count = array_sum(array_column($history, 'count'));
@@ -218,7 +219,7 @@ class DashboardController extends Controller
             ->where('utilisateur_id', $ownerId)
             ->where('created_at', '>=', $now->copy()->subMonths(11)->startOfMonth())
             ->groupBy(DB::raw('DATE_FORMAT(created_at, "%Y-%m")'))
-            ->orderBy('mois', 'asc')
+            ->orderBy('mois', 'desc')
             ->get();
 
         return $monthlySales->map(function($sale) {
