@@ -98,7 +98,7 @@ class VenteController extends Controller
 
             // Créer la vente
             $vente = Vente::create([
-               // 'reference' => Vente::generateReference(),
+                'reference' => Vente::generateReference(),
                 'utilisateur_id' => $ownerId,
                 'employe_id' => $employeId,
                 'client_id' => $clientId,
@@ -208,14 +208,14 @@ class VenteController extends Controller
      * Détails d'une vente
      * GET /api/ventes/{id}
      */
-    public function show(int $id): JsonResponse
+    public function show(String $ref): JsonResponse
     {
         try {
             $ownerId = $this->getOwnerId();
             
             $vente = Vente::with('details', 'employe', 'client')
                 ->where('utilisateur_id', $ownerId)
-                ->findOrFail($id);
+                ->findOrFail($ref);
 
             return response()->json([
                 'success' => true,

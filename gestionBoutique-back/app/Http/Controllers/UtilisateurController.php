@@ -24,6 +24,10 @@ class UtilisateurController extends Controller
             'prenom' => 'required|string|max:50',
             'email' => 'required|string|email',
             'mot_de_passe' => 'required|string|min:6',
+            'nom_boutique' => 'required|string|max:50',
+            'adresse_boutique' => 'required|string|max:255',
+            'telephone_boutique' => 'string|max:20',
+            'logo_boutique' => 'string|max:500'
         ]);
 
         if (Utilisateur::where('email', $validated['email'])->exists()) {

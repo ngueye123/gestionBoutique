@@ -10,6 +10,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\VenteController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\RemboursementController;
+use App\Http\Controllers\FactureController;
 
 
 // Routes publiques
@@ -44,9 +45,15 @@ Route::middleware(['jwt.auth'])->group(function () {
     Route::delete('/products/{id}', [ProductController::class, 'destroy']);
 
     // Routes ventes - accessible à tous les utilisateurs connectés
+    Route::get('ventes/autocomplete', [FactureController::class, 'autocomplete']);
+    Route::get('ventes/search', [FactureController::class, 'searchByReference']);
     Route::post('/ventes', [VenteController::class, 'store']);
     Route::get('/ventes', [VenteController::class, 'index']);
     Route::get('/ventes/{id}', [VenteController::class, 'show']);
+    // Routes factures - accessible à tous les utilisateurs connectés
+  
+    Route::get('/ventes/{id}/facture', [FactureController::class, 'generateFacture']);
+    Route::get('/ventes/{id}/facture/preview', [FactureController::class, 'previewFacture']);
     
     // Routes dashboard - seulement patron et admin
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);

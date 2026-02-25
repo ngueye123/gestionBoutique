@@ -10,6 +10,7 @@ return new class extends Migration {
     {
         Schema::create('ventes', function (Blueprint $table) {
             $table->id();
+             $table->string('reference', 20)->unique();
             $table->foreignId('utilisateur_id')->constrained('utilisateurs')->cascadeOnDelete();
             $table->foreignId('employe_id')->nullable()->constrained('employes')->nullOnDelete();
             $table->decimal('total', 10, 2);

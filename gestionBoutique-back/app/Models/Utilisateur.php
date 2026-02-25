@@ -24,7 +24,11 @@ class Utilisateur extends Authenticatable implements JWTSubject, MustVerifyEmail
         'mot_de_passe',
         'role',
         'email_verified_at',
-        'verification_token'
+        'verification_token',
+        'nom_boutique',         
+        'adresse_boutique',     
+        'telephone_boutique',
+        'logo_boutique'
     ];
 
     protected $hidden = [
