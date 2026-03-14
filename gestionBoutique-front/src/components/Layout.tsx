@@ -3,7 +3,8 @@ import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Package, ShoppingCart, Users, LogOut, User, UserCircle } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { EmployeUser } from '../types';
-
+import { Wallet } from 'lucide-react';
+import { CaisseIndicateur } from './CaisseIndicateur';
 function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -96,6 +97,13 @@ function Layout() {
             </Link>
           )}
 
+          {canViewProducts() && (
+            <Link to="/caisse" className={linkClass('/caisse')}>
+              <Wallet className="w-5 h-5 mr-2" />
+              Ma Caisse
+            </Link>
+          )}
+
           {/* Clients */}
           {canViewProducts() && (
             <Link to="/clients" className={linkClass('/clients')}>
@@ -112,6 +120,11 @@ function Layout() {
             </Link>
           )}
         </nav>
+
+       {/* <div className="absolute bottom-16 left-4 right-4">
+          <CaisseIndicateur />
+        </div> */}
+
 
         {/* Bouton de déconnexion */}
         <div className="absolute bottom-4 left-4">

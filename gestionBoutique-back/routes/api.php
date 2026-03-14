@@ -11,9 +11,14 @@ use App\Http\Controllers\VenteController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\RemboursementController;
 use App\Http\Controllers\FactureController;
+use App\Http\Controllers\CaisseController;
 
+// ✅ Import direct — contourne le problème d'alias 'check.caisse'
+use App\Http\Middleware\CheckCaissePlafond;
 
+// ============================================================
 // Routes publiques
+// ============================================================
 Route::post('/register', [UtilisateurController::class, 'register']);
 Route::post('/login', [UtilisateurController::class, 'login']);
 Route::post('/employe/login', [EmployeAuthController::class, 'login']);
@@ -26,55 +31,92 @@ Route::post('/resend-verification', [UtilisateurController::class, 'resendVerifi
 Route::post('/forgot-password', [UtilisateurController::class, 'forgotPassword']);
 Route::post('/reset-password', [UtilisateurController::class, 'resetPassword']);
 
+// ============================================================
 // Routes protégées avec JWT
+// ============================================================
 Route::middleware(['jwt.auth'])->group(function () {
-    // Logout
+
+    // ── Auth ─────────────────────────────────────────────────────────────
     Route::post('/logout', [UtilisateurController::class, 'logout']);
     Route::post('/employe/logout', [EmployeAuthController::class, 'logout']);
-    
-    // Refresh token
     Route::post('/auth/refresh', [AuthController::class, 'refresh']);
-    
-    // Routes produits - accessible à tous les utilisateurs connectés
+
+    // ── Produits ──────────────────────────────────────────────────────────
     Route::get('/products', [ProductController::class, 'index']);
     Route::put('/products/{id}/update-stock', [ProductController::class, 'updateStock']);
-    
-    // Routes produits - seulement patron et admin
+
+    // Seulement patron et admin
     Route::post('/products', [ProductController::class, 'store']);
     Route::put('/products/{id}', [ProductController::class, 'update']);
     Route::delete('/products/{id}', [ProductController::class, 'destroy']);
 
-    // Routes ventes - accessible à tous les utilisateurs connectés
-    Route::get('ventes/autocomplete', [FactureController::class, 'autocomplete']);
-    Route::get('ventes/search', [FactureController::class, 'searchByReference']);
-    Route::post('/ventes', [VenteController::class, 'store']);
+    // ── Ventes ────────────────────────────────────────────────────────────
+    Route::get('/ventes/autocomplete', [FactureController::class, 'autocomplete']);
+    Route::get('/ventes/search', [FactureController::class, 'searchByReference']);
+
+    // ✅ Classe complète au lieu de l'alias 'check.caisse'
+    Route::post('/ventes', [VenteController::class, 'store'])
+        ->middleware(CheckCaissePlafond::class);
+
     Route::get('/ventes', [VenteController::class, 'index']);
     Route::get('/ventes/{id}', [VenteController::class, 'show']);
-    // Routes factures - accessible à tous les utilisateurs connectés
-  
+
+    // ── Factures ──────────────────────────────────────────────────────────
     Route::get('/ventes/{id}/facture', [FactureController::class, 'generateFacture']);
     Route::get('/ventes/{id}/facture/preview', [FactureController::class, 'previewFacture']);
-    
-    // Routes dashboard - seulement patron et admin
+
+    // ── Dashboard ─────────────────────────────────────────────────────────
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
-    
-    // Routes employés - seulement patron
+
+    // ── Employés ──────────────────────────────────────────────────────────
     Route::post('/employes', [EmployeController::class, 'store']);
     Route::get('/employes', [EmployeController::class, 'index']);
     Route::delete('/employes/{id}', [EmployeController::class, 'destroy']);
     Route::put('/employes/{id}/role', [EmployeController::class, 'updateRole']);
-   
-    // ========== ROUTES CLIENTS ==========
+
+    // ── Clients ───────────────────────────────────────────────────────────
     Route::get('/clients', [ClientController::class, 'index']);
     Route::post('/clients', [ClientController::class, 'store']);
-    Route::get('/clients/search', [ClientController::class, 'search']); // Autocomplétion
+    Route::get('/clients/search', [ClientController::class, 'search']);
     Route::get('/clients/{id}', [ClientController::class, 'show']);
     Route::put('/clients/{id}', [ClientController::class, 'update']);
     Route::delete('/clients/{id}', [ClientController::class, 'destroy']);
-    
-    // ========== ROUTES REMBOURSEMENTS ==========
-    Route::post('/remboursements', [RemboursementController::class, 'store']);
+
+    // ── Remboursements ────────────────────────────────────────────────────
+    // ✅ Classe complète au lieu de l'alias 'check.caisse'
+    Route::post('/remboursements', [RemboursementController::class, 'store'])
+        ->middleware(CheckCaissePlafond::class);
+
     Route::get('/remboursements', [RemboursementController::class, 'index']);
     Route::get('/remboursements/{id}', [RemboursementController::class, 'show']);
     Route::get('/clients/{id}/remboursements', [RemboursementController::class, 'historiqueClient']);
+
+    // ── Caisse ────────────────────────────────────────────────────────────
+    Route::prefix('caisse')->group(function () {
+
+        // Ma caisse + 50 derniers mouvements
+        Route::get('/moi', [CaisseController::class, 'maCaisse']);
+
+        // Apport ou prélèvement
+        Route::post('/mouvement', [CaisseController::class, 'mouvement']);
+
+        // Ticket PDF de prélèvement
+        Route::get('/ticket/{mouvementId}', [CaisseController::class, 'ticket']);
+
+        // Bilan / Clôture de caisse
+        Route::get('/bilan', [CaisseController::class, 'bilan']);
+
+        // Vue globale toutes caisses (patron/admin uniquement)
+        Route::get('/toutes', [CaisseController::class, 'toutes']);
+
+        // ✅ NOUVEAU : Appliquer même plafond à toutes les caisses (patron uniquement)
+        // ⚠️  Cette route DOIT être déclarée AVANT /{id}/plafond pour éviter
+        //     que Laravel interprète "plafond-global" comme un {id}
+        Route::put('/plafond-global', [CaisseController::class, 'modifierPlafondGlobal']);
+
+        // Modifier le plafond d'une caisse spécifique (patron uniquement)
+        Route::put('/{id}/plafond', [CaisseController::class, 'modifierPlafond']);
+
+    });
+
 });

@@ -7,6 +7,8 @@ import { useAuthStore } from '../store/authStore';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { InvoiceButton } from '../components/InvoiceButton';
 import { InvoiceSearch } from '../components/InvoiceSearch';
+import { CaisseBloqueeModal } from '../components/CaisseBloqueeModal';
+import type { BloquageInfo } from '../hooks/useCaisse';
 
 export default function POS() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -20,20 +22,23 @@ export default function POS() {
   const [showClientForm, setShowClientForm] = useState(false);
   const [newClient, setNewClient] = useState({ nom: '', telephone: '' });
   const [loading, setLoading] = useState(false);
-  
+
   // États pour le modal de succès et la facture
   const [lastSaleId, setLastSaleId] = useState<number | null>(null);
   const [lastSaleReference, setLastSaleReference] = useState<string>('');
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  
+
   // État pour le modal de recherche de factures
   const [showInvoiceSearchModal, setShowInvoiceSearchModal] = useState(false);
-  
+
+  // ✅ NOUVEAU : État pour le blocage caisse
+  const [bloquageCaisse, setBloquageCaisse] = useState<BloquageInfo | null>(null);
+
   const { items, addItem, removeItem, updateQuantity, total, clearCart } = useCartStore();
   const { token } = useAuthStore();
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
-  // ✅ Fonction utilitaire pour convertir solde_dette en nombre
+  // Fonction utilitaire pour convertir solde_dette en nombre
   const getSoldeDette = (solde: any): number => {
     const parsed = parseFloat(String(solde || 0));
     return isNaN(parsed) ? 0 : parsed;
@@ -107,6 +112,7 @@ export default function POS() {
     }
   };
 
+  // ✅ handlePayment avec interception du blocage caisse
   const handlePayment = async () => {
     if (paymentMethod === 'especes' && receivedAmount < total) {
       toast.error('Le montant reçu est insuffisant');
@@ -139,13 +145,21 @@ export default function POS() {
 
       const result = await response.json();
 
+      // ✅ Interception du blocage caisse : ferme le modal paiement et ouvre le modal blocage
+      if (!result.success && result.code === 'CAISSE_BLOQUEE') {
+        setShowPaymentModal(false);
+        setBloquageCaisse(result as BloquageInfo);
+        setLoading(false);
+        return;
+      }
+
       if (result.success) {
         // Stocker les infos de la vente pour la facture
         setLastSaleId(result.vente.id);
         setLastSaleReference(result.vente.reference);
-        
+
         const change = paymentMethod === 'especes' ? receivedAmount - total : 0;
-        
+
         if (paymentMethod === 'dette') {
           const nouveauSolde = getSoldeDette(result.nouveau_solde_client);
           toast.success(`Vente à crédit enregistrée ! Dette du client: ${nouveauSolde.toFixed(2)} F`);
@@ -153,6 +167,14 @@ export default function POS() {
           toast.success(`Vente enregistrée ! Monnaie à rendre : ${change.toFixed(2)} F`);
         } else {
           toast.success('Vente enregistrée avec succès !');
+        }
+
+        // ✅ Alerte si la caisse approche du plafond (>= 80%)
+        if (result.caisse?.attention) {
+          toast.warning(
+            `⚠️ Caisse à ${result.caisse.pourcentage}% du plafond (${result.caisse.solde_actuel.toLocaleString('fr-FR')} / ${result.caisse.plafond.toLocaleString('fr-FR')} F). Pensez à prélever bientôt.`,
+            { duration: 7000 }
+          );
         }
 
         // Afficher le modal de succès avec option facture
@@ -196,7 +218,7 @@ export default function POS() {
               className="w-full pl-10 pr-4 py-2 border rounded-lg"
             />
           </div>
-          
+
           {/* Bouton pour ouvrir la recherche de factures */}
           <button
             onClick={() => setShowInvoiceSearchModal(true)}
@@ -294,7 +316,7 @@ export default function POS() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg w-full max-w-md max-h-[90vh] overflow-y-auto">
             <h2 className="text-xl font-bold mb-4">Paiement</h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -365,7 +387,7 @@ export default function POS() {
                         className="w-full pl-9 pr-4 py-2 border rounded-md"
                       />
                     </div>
-                    
+
                     {clients.length > 0 && (
                       <div className="mt-2 max-h-40 overflow-y-auto border rounded-md">
                         {clients.map(client => {
@@ -523,7 +545,7 @@ export default function POS() {
             </div>
 
             <div className="space-y-3 mb-6">
-              <InvoiceButton 
+              <InvoiceButton
                 venteId={lastSaleId}
                 venteReference={lastSaleReference}
                 variant="primary"
@@ -549,6 +571,23 @@ export default function POS() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <InvoiceSearch onClose={() => setShowInvoiceSearchModal(false)} />
         </div>
+      )}
+
+      {/* ✅ Modal de blocage caisse — s'affiche quand la caisse est pleine */}
+      {bloquageCaisse && (
+        <CaisseBloqueeModal
+          bloquage={bloquageCaisse}
+          onPrelevementFait={() => {
+            // Ferme le modal de blocage et réouvre le modal de paiement
+            // Le panier est intact, l'utilisateur peut retenter directement
+            setBloquageCaisse(null);
+            setShowPaymentModal(true);
+          }}
+          onAnnuler={() => {
+            // Annule tout : ferme le modal de blocage, le panier reste intact
+            setBloquageCaisse(null);
+          }}
+        />
       )}
     </div>
   );

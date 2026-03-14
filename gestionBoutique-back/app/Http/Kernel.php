@@ -60,6 +60,7 @@ class Kernel extends HttpKernel
        'patron.only' => \App\Http\Middleware\PatronOnly::class,
        'check.role' => \App\Http\Middleware\CheckRole::class,
        'dashboard.access' => \App\Http\Middleware\DashboardAccess::class,
+       'check.caisse' => \App\Http\Middleware\CheckCaissePlafond::class,
 
     ];
 }

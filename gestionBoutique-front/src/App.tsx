@@ -15,6 +15,7 @@ import { RoleGuard } from './components/RoleGuard'
 import { useAuthStore } from './store/authStore'
 import Clients from './pages/Clients'
 import ClientDetails from './pages/ClientDetails'
+import Caisse from './pages/Caisse';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore(state => state.token)
@@ -126,6 +127,15 @@ export default function App() {
                 <POS />
               </RoleGuard>
             } 
+          />
+
+          <Route
+            path="caisse"
+            element={
+              <RoleGuard allowedRoles={['patron', 'admin', 'vendeur', 'caissier']}>
+                <Caisse />
+              </RoleGuard>
+            }
           />
           
           {/* Employés - Seulement pour les patrons */}
