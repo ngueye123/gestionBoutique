@@ -39,16 +39,32 @@ class Caisse extends Model
         return $this->hasMany(MouvementCaisse::class);
     }
 
-    // ─── Factory : récupère ou crée la caisse pour un acteur ────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Factory : récupère ou crée la caisse pour un acteur
+    // ─────────────────────────────────────────────────────────────────────────
 
     public static function pour($actor): self
     {
-        $isEmploye = $actor instanceof Employe;
+        // ── Employé ──────────────────────────────────────────────────────────
+        if ($actor instanceof Employe) {
+            return self::firstOrCreate(
+                [
+                    'employe_id'     => $actor->id,
+                    'utilisateur_id' => $actor->utilisateur_id,
+                ],
+                [
+                    'solde_actuel' => 0,
+                    'plafond'      => 500000,
+                    'est_bloquee'  => false,
+                ]
+            );
+        }
 
+        // ── Patron (Utilisateur) ──────────────────────────────────────────────
         return self::firstOrCreate(
             [
-                'employe_id'      => $isEmploye ? $actor->id : null,
-                'utilisateur_id'  => $isEmploye ? $actor->utilisateur_id : $actor->id,
+                'employe_id'     => null,
+                'utilisateur_id' => $actor->id,
             ],
             [
                 'solde_actuel' => 0,
@@ -58,24 +74,17 @@ class Caisse extends Model
         );
     }
 
-    // ─── Opérations ─────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Opérations
+    // ─────────────────────────────────────────────────────────────────────────
 
-    /**
-     * Crédite la caisse.
-     *
-     * Types acceptés :
-     *   - 'vente'               → vente espèces normale
-     *   - 'apport'              → fond de caisse / apport manuel
-     *   - 'remboursement_dette' → client rembourse sa dette en espèces ✅ NOUVEAU
-     *
-     * @param float       $montant
-     * @param string      $type      'vente' | 'apport' | 'remboursement_dette'
-     * @param int|null    $venteId   ID de la vente liée (si applicable)
-     * @param string|null $note
-     */
-    public function crediter(float $montant, string $type = 'vente', ?int $venteId = null, ?string $note = null): MouvementCaisse
-    {
-        $soldeAvant = $this->solde_actuel;
+    public function crediter(
+        float   $montant,
+        string  $type = 'vente',
+        ?int    $venteId = null,
+        ?string $note = null
+    ): MouvementCaisse {
+        $soldeAvant         = $this->solde_actuel;
         $this->solde_actuel += $montant;
         $this->save();
 
@@ -92,22 +101,16 @@ class Caisse extends Model
         ]);
     }
 
-    /**
-     * Débite la caisse (prélèvement uniquement).
-     * Génère automatiquement une référence de ticket PREL-YYYYMMDD-XXXX.
-     */
     public function debiter(float $montant, ?string $note = null): MouvementCaisse
     {
-        $soldeAvant = $this->solde_actuel;
+        $soldeAvant         = $this->solde_actuel;
         $this->solde_actuel -= $montant;
         $this->save();
 
-        $reference = 'PREL-' . now()->format('Ymd') . '-' . str_pad(
-            MouvementCaisse::whereDate('created_at', today())
-                ->where('type', 'prelevement')
-                ->count() + 1,
-            4, '0', STR_PAD_LEFT
-        );
+        $count     = MouvementCaisse::whereDate('created_at', today())
+            ->where('type', 'prelevement')
+            ->count() + 1;
+        $reference = 'PREL-' . now()->format('Ymd') . '-' . str_pad($count, 4, '0', STR_PAD_LEFT);
 
         return MouvementCaisse::create([
             'caisse_id'        => $this->id,
@@ -122,7 +125,9 @@ class Caisse extends Model
         ]);
     }
 
-    // ─── Helpers ────────────────────────────────────────────────────────────
+    // ─────────────────────────────────────────────────────────────────────────
+    // Helpers
+    // ─────────────────────────────────────────────────────────────────────────
 
     public function depasseraitPlafond(float $montant): bool
     {
@@ -134,14 +139,10 @@ class Caisse extends Model
         return $this->est_bloquee || $this->solde_actuel >= $this->plafond;
     }
 
-    /**
-     * Retourne le pourcentage de remplissage et le niveau d'alerte.
-     * Niveaux : null | 'info'(70%) | 'warning'(80%) | 'critique'(90%) | 'danger'(100%)
-     */
     public function statutAlerte(): array
     {
         if ($this->plafond <= 0) {
-            return ['pourcentage' => 0, 'niveau' => null, 'label' => 'ok'];
+            return ['pourcentage' => 0, 'niveau' => null, 'label' => '✅ Normal', 'attention' => false];
         }
 
         $pct = round(($this->solde_actuel / $this->plafond) * 100, 1);

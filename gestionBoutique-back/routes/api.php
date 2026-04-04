@@ -94,27 +94,30 @@ Route::middleware(['jwt.auth'])->group(function () {
     // ── Caisse ────────────────────────────────────────────────────────────
     Route::prefix('caisse')->group(function () {
 
-        // Ma caisse + 50 derniers mouvements
+       // Ma caisse + historique mouvements (sans ventes)
         Route::get('/moi', [CaisseController::class, 'maCaisse']);
-
+ 
         // Apport ou prélèvement
         Route::post('/mouvement', [CaisseController::class, 'mouvement']);
-
-        // Ticket PDF de prélèvement
+ 
+        // Ticket PDF d'un prélèvement
         Route::get('/ticket/{mouvementId}', [CaisseController::class, 'ticket']);
-
-        // Bilan / Clôture de caisse
-        Route::get('/bilan', [CaisseController::class, 'bilan']);
-
+ 
+        // ✅ Bilan (POST — solde_reel obligatoire, sauvegarde + génère référence)
+        // ⚠️  AVANT /bilan/{bilanId} pour éviter que Laravel interprète 'bilan' comme {bilanId}
+        Route::post('/bilan', [CaisseController::class, 'bilan']);
+ 
+        // ✅ Ticket PDF d'un bilan
+        Route::get('/bilan/ticket/{bilanId}', [CaisseController::class, 'ticketBilan']);
+ 
+        // ✅ Historique des bilans (patron uniquement)
+        Route::get('/bilans', [CaisseController::class, 'historiqueBilans']);
+ 
         // Vue globale toutes caisses (patron/admin uniquement)
         Route::get('/toutes', [CaisseController::class, 'toutes']);
-
-        // ✅ NOUVEAU : Appliquer même plafond à toutes les caisses (patron uniquement)
-        // ⚠️  Cette route DOIT être déclarée AVANT /{id}/plafond pour éviter
-        //     que Laravel interprète "plafond-global" comme un {id}
+ 
+        // ⚠️ plafond-global AVANT /{id}/plafond
         Route::put('/plafond-global', [CaisseController::class, 'modifierPlafondGlobal']);
-
-        // Modifier le plafond d'une caisse spécifique (patron uniquement)
         Route::put('/{id}/plafond', [CaisseController::class, 'modifierPlafond']);
 
     });
