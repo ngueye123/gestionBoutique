@@ -17,13 +17,21 @@ const loginSchema = z.object({
 
 type LoginForm = z.infer<typeof loginSchema>;
 
+// Détermine la route d'accueil selon le rôle
+function getRedirectPath(userType: 'patron' | 'employe', role?: string): string {
+  if (userType === 'patron') return '/';
+  if (role === 'admin') return '/';
+  // vendeur et caissier → Point de Vente directement
+  return '/pos';
+}
+
 function Login() {
   const navigate = useNavigate();
   const setAuth = useAuthStore(state => state.setAuth);
   const [userType, setUserType] = useState<'patron' | 'employe'>('patron');
   const [loading, setLoading] = useState(false);
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
-  
+
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
   });
@@ -33,16 +41,18 @@ function Login() {
   const onSubmit = async (data: LoginForm) => {
     setLoading(true);
     try {
-      if (!API_URL) {
-        throw new Error('API_URL non configurée');
-      }
-      
       const endpoint = userType === 'patron' ? '/login' : '/employe/login';
       const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
+
+      // Vérifier que la réponse est bien du JSON avant de parser
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error(`Réponse inattendue du serveur (${response.status}). Vérifiez la configuration API.`);
+      }
 
       const result = await response.json();
 
@@ -54,9 +64,11 @@ function Login() {
             prenom: result.user.prenom,
             email: result.user.email,
             user_type: 'patron',
-            email_verified: result.user.email_verified
+            email_verified: result.user.email_verified,
           };
           setAuth(patronUser, result.token);
+          toast.success('Connexion réussie');
+          navigate(getRedirectPath('patron'), { replace: true });
         } else {
           const employeUser: EmployeUser = {
             id: result.employe.id,
@@ -65,24 +77,21 @@ function Login() {
             email: result.employe.email,
             role: result.employe.role as 'admin' | 'vendeur' | 'caissier',
             user_type: 'employe',
-            utilisateur_id: result.employe.utilisateur_id
+            utilisateur_id: result.employe.utilisateur_id,
           };
           setAuth(employeUser, result.token);
+          toast.success('Connexion réussie');
+          navigate(getRedirectPath('employe', result.employe.role), { replace: true });
         }
-        
-        toast.success(`Connexion réussie en tant que ${userType}`);
-        navigate('/');
       } else {
         if (result.email_verified === false) {
           setUnverifiedEmail(data.email);
-          toast.error(result.message);
-        } else {
-          toast.error(result.message);
         }
+        toast.error(result.message || 'Identifiants invalides');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erreur de connexion:', error);
-      toast.error('Erreur lors de la connexion');
+      toast.error(error.message || 'Erreur lors de la connexion');
     } finally {
       setLoading(false);
     }
@@ -93,7 +102,7 @@ function Login() {
       <div className="bg-white p-8 rounded-lg shadow-md w-96">
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold mb-4">Connexion</h1>
-          
+
           <div className="flex bg-gray-100 rounded-lg p-1 mb-4">
             <button
               type="button"

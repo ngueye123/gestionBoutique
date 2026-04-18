@@ -15,7 +15,7 @@ import { RoleGuard } from './components/RoleGuard'
 import { useAuthStore } from './store/authStore'
 import Clients from './pages/Clients'
 import ClientDetails from './pages/ClientDetails'
-import Caisse from './pages/Caisse';
+import Caisse from './pages/Caisse'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore(state => state.token)
@@ -37,60 +37,44 @@ function PrivateRoute({ children }: { children: React.ReactNode }) {
   return token ? <>{children}</> : <Navigate to="/login" replace />
 }
 
-// Composant pour vérifier périodiquement le token
-function TokenChecker() {
-  const navigate = useNavigate();
-  const { token, logout } = useAuthStore();
+// Redirige intelligemment selon le rôle après connexion
+// Les vendeurs/caissiers n'ont pas accès au dashboard → /pos
+// Les patrons et admins → /
+function RoleBasedRedirect() {
+  const { user } = useAuthStore()
 
-  useEffect(() => {
-    if (!token) return;
+  if (!user) return <Navigate to="/login" replace />
 
-    // Vérifier l'âge du token toutes les 5 minutes
-    const checkTokenAge = () => {
-      const tokenTimestamp = localStorage.getItem('tokenTimestamp');
-      
-      if (tokenTimestamp) {
-        const tokenAge = Date.now() - parseInt(tokenTimestamp);
-        const thirtyDaysInMs = 30 * 24 * 60 * 60 * 1000;
-        
-        if (tokenAge > thirtyDaysInMs) {
-          // Token expiré
-          logout();
-          navigate('/login', { replace: true });
-        }
-      }
-    };
+  const isPatron = user.user_type === 'patron'
+  const isAdmin = 'role' in user && user.role === 'admin'
 
-    // Vérifier immédiatement
-    checkTokenAge();
+  if (isPatron || isAdmin) {
+    return <Navigate to="/" replace />
+  }
 
-    // Vérifier toutes les 5 minutes
-    const interval = setInterval(checkTokenAge, 5 * 60 * 1000);
-
-    return () => clearInterval(interval);
-  }, [token, logout, navigate]);
-
-  return null;
+  // Vendeur ou caissier → Point de Vente
+  return <Navigate to="/pos" replace />
 }
 
 export default function App() {
   const loadAuthFromStorage = useAuthStore(state => state.loadAuthFromStorage)
 
   useEffect(() => {
-    loadAuthFromStorage();
-  }, [loadAuthFromStorage]);
+    loadAuthFromStorage()
+  }, [loadAuthFromStorage])
 
   return (
     <BrowserRouter>
-      <TokenChecker />
       <Toaster position="top-right" richColors />
       <Routes>
+        {/* Routes publiques */}
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
 
+        {/* Routes privées — Layout commun */}
         <Route
           path="/"
           element={
@@ -99,36 +83,37 @@ export default function App() {
             </PrivateRoute>
           }
         >
-          {/* Dashboard - Accessible aux patrons et employés admin */}
-          <Route 
-            index 
+          {/* Dashboard — Patrons et employés admin uniquement */}
+          <Route
+            index
             element={
               <RoleGuard requireEmployeeAdmin>
                 <Dashboard />
               </RoleGuard>
-            } 
+            }
           />
-          
-          {/* Products - Accessible à tous les utilisateurs connectés */}
-          <Route 
-            path="products" 
+
+          {/* Produits — Tous les rôles */}
+          <Route
+            path="products"
             element={
               <RoleGuard allowedRoles={['patron', 'admin', 'vendeur', 'caissier']}>
                 <Products />
               </RoleGuard>
-            } 
+            }
           />
-          
-          {/* Point of Sale - Accessible à tous les utilisateurs connectés */}
-          <Route 
-            path="pos" 
+
+          {/* Point de Vente — Tous les rôles */}
+          <Route
+            path="pos"
             element={
               <RoleGuard allowedRoles={['patron', 'admin', 'vendeur', 'caissier']}>
                 <POS />
               </RoleGuard>
-            } 
+            }
           />
 
+          {/* Caisse — Tous les rôles */}
           <Route
             path="caisse"
             element={
@@ -137,50 +122,39 @@ export default function App() {
               </RoleGuard>
             }
           />
-          
-          {/* Employés - Seulement pour les patrons */}
-          <Route 
-            path="employes" 
+
+          {/* Employés — Patrons uniquement */}
+          <Route
+            path="employes"
             element={
               <RoleGuard requirePatron>
                 <Employes />
               </RoleGuard>
-            } 
+            }
           />
 
-          {/* Route Clients - Accessible à tous les utilisateurs connectés */}
-          <Route 
-            path="clients" 
+          {/* Clients — Tous les rôles */}
+          <Route
+            path="clients"
             element={
               <RoleGuard allowedRoles={['patron', 'admin', 'vendeur', 'caissier']}>
                 <Clients />
               </RoleGuard>
-            } 
+            }
           />
 
-          {/* Route Détails Client - Accessible à tous les utilisateurs connectés */}
-          <Route 
-            path="clients/:id" 
+          {/* Détails client — Tous les rôles */}
+          <Route
+            path="clients/:id"
             element={
               <RoleGuard allowedRoles={['patron', 'admin', 'vendeur', 'caissier']}>
                 <ClientDetails />
               </RoleGuard>
-            } 
+            }
           />
 
-          {/* Route par défaut pour les utilisateurs non autorisés */}
-          <Route 
-            path="*" 
-            element={
-              <div className="flex items-center justify-center min-h-screen">
-                <div className="text-center">
-                  <h1 className="text-2xl font-bold text-gray-800 mb-4">Page non trouvée</h1>
-                  <p className="text-gray-600 mb-4">La page que vous recherchez n'existe pas.</p>
-                  <Navigate to="/" replace />
-                </div>
-              </div>
-            } 
-          />
+          {/* Route inconnue — redirection intelligente selon le rôle */}
+          <Route path="*" element={<RoleBasedRedirect />} />
         </Route>
       </Routes>
     </BrowserRouter>

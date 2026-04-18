@@ -33,6 +33,8 @@ class EmployeController extends Controller
             ], 400);
         }
 
+
+
         $employe = Employe::create([
             'nom' => $validated['nom'],
             'email' => $validated['email'],
