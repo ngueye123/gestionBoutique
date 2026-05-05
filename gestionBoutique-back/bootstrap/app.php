@@ -14,7 +14,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // ✅ Enregistrement des alias ici (remplace Kernel.php)
         $middleware->alias([
-            'jwt.auth'        => \App\Http\Middleware\JWTMiddleware::class,
+            'jwt.custom' => \App\Http\Middleware\JWTMiddleware::class,
             'patron.only'     => \App\Http\Middleware\PatronOnly::class,
             'check.role'      => \App\Http\Middleware\CheckRole::class,
             'dashboard.access'=> \App\Http\Middleware\DashboardAccess::class,

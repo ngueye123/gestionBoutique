@@ -34,7 +34,7 @@ Route::post('/reset-password', [UtilisateurController::class, 'resetPassword']);
 // ============================================================
 // Routes protégées avec JWT
 // ============================================================
-Route::middleware(['jwt.auth'])->group(function () {
+Route::middleware(['jwt.custom'])->group(function () {
 
     // ── Auth ─────────────────────────────────────────────────────────────
     Route::post('/logout', [UtilisateurController::class, 'logout']);
