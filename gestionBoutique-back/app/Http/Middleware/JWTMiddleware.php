@@ -8,8 +8,6 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 use Tymon\JWTAuth\Exceptions\TokenExpiredException;
 use Tymon\JWTAuth\Exceptions\TokenInvalidException;
 use Illuminate\Support\Facades\Auth;
-use App\Models\Utilisateur;
-use App\Models\Employe;
 use Illuminate\Support\Facades\Log;
 
 class JWTMiddleware
@@ -17,24 +15,18 @@ class JWTMiddleware
     public function handle($request, Closure $next)
     {
         try {
-            $token    = JWTAuth::parseToken();
-            $payload  = $token->getPayload();
-            $sub      = $payload->get('sub');
+            $payload  = JWTAuth::parseToken()->getPayload();
             $userType = $payload->get('user_type');
+            $guard = $userType === 'employe' ? 'employe' : 'api';
 
-            if ($userType === 'employe') {
-                $user = Employe::find($sub);
-                if (!$user) {
-                    return response()->json(['success' => false, 'message' => 'Employé introuvable.'], 401);
-                }
-            } else {
-                $user = Utilisateur::find($sub);
-                if (!$user) {
-                    return response()->json(['success' => false, 'message' => 'Utilisateur introuvable.'], 401);
-                }
+            Auth::shouldUse($guard);
+            $user = auth()->guard($guard)->authenticate();
+
+            if (!$user) {
+                return response()->json(['success' => false, 'message' => 'Utilisateur introuvable.'], 401);
             }
 
-            Auth::setUser($user);
+            Auth::guard($guard)->setUser($user);
 
         } catch (TokenExpiredException $e) {
             return response()->json(['success' => false, 'code' => 'TOKEN_EXPIRED', 'message' => 'Token expiré.'], 401);

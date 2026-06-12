@@ -255,3 +255,115 @@ export interface EmployeFormData {
   mot_de_passe: string
   role: 'admin' | 'vendeur' | 'caissier'
 }
+
+
+// ========== TYPES DÉPENSES ==========
+
+export interface Depense {
+  id: number
+  utilisateur_id: number
+  montant: number
+  date_depense: string
+  description: string
+  categorie: string
+  created_at: string
+  updated_at: string
+}
+
+export interface DepenseFormData {
+  montant: string
+  date_depense: string
+  description: string
+  categorie: string
+}
+
+// Période retournée par l'API — deux formes possibles selon le mode
+export type PeriodeDepense =
+  | { mode: 'range'; start_date: string; end_date: string; label: string }
+  | { mode: 'mois';  mois: number; annee: number; label: string }
+
+export interface DepensesResponse {
+  success: boolean
+  depenses: {
+    data: Depense[]
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+  }
+  total_mensuel: number
+  total_periode: number
+  total_mois_precedent: number
+  variation_pct: number | null
+  par_categorie: Array<{
+    categorie: string
+    label: string
+    total: number
+    nombre: number
+  }>
+  categories: Record<string, string>
+  periode: PeriodeDepense
+}
+
+export interface DepenseResponse {
+  success: boolean
+  message: string
+  depense?: Depense
+  errors?: Record<string, string[]>
+}
+
+export interface DepenseDeleteResponse {
+  success: boolean
+  message: string
+}
+
+export interface StatsAnnuellesResponse {
+  success: boolean
+  annee: number
+  stats_par_mois: Array<{
+    mois: number
+    label: string
+    total: number
+    nombre: number
+  }>
+  total_annuel: number
+}
+
+// Filtres — supporte les deux modes
+export interface FiltresDepenses {
+  // Mode plage (prioritaire si renseigné)
+  start_date?: string
+  end_date?: string
+  // Mode mois/année (legacy)
+  mois?: number
+  annee?: number
+  // Communs
+  categorie?: string
+  page?: number
+}
+
+// Enrichissement DashboardStats avec les champs bénéfice
+export interface DashboardStats {
+  totalProducts: number
+  lowStockProducts: number
+  totalValue: number
+  stockMovements: number
+  salesHistory: SaleItem[]
+  stockAlerts: StockAlert[]
+  todaySales?: number
+  monthSales?: number
+  periodTotal?: number
+  periodCount?: number
+  topProducts?: TopProduct[]
+  monthlySales?: MonthlySale[]
+  period?: {
+    type: string
+    start_date: string
+    end_date: string
+    label: string
+  }
+  // Champs bénéfice — alimentés par DashboardController::getBeneficePeriode()
+  depenses_periode?: number
+  benefice_periode?: number
+  depenses_history?: Array<{ date: string; montant: number }>
+}

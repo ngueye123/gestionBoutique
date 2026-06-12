@@ -12,21 +12,19 @@ use App\Http\Controllers\ClientController;
 use App\Http\Controllers\RemboursementController;
 use App\Http\Controllers\FactureController;
 use App\Http\Controllers\CaisseController;
-
-// ✅ Import direct — contourne le problème d'alias 'check.caisse'
 use App\Http\Middleware\CheckCaissePlafond;
-
+use App\Http\Controllers\DepenseController;
 // ============================================================
 // Routes publiques
 // ============================================================
 Route::post('/register', [UtilisateurController::class, 'register']);
-Route::post('/login', [UtilisateurController::class, 'login']);
-Route::post('/employe/login', [EmployeAuthController::class, 'login']);
+Route::post('/login', [UtilisateurController::class, 'login'])-> middleware('throttle:5,1') ;
+Route::post('/employe/login', [EmployeAuthController::class, 'login'])-> middleware('throttle:5,1') ;
 
 // Email verification
 Route::post('/verify-email', [UtilisateurController::class, 'verifyEmail']);
 Route::post('/resend-verification', [UtilisateurController::class, 'resendVerification']);
-
+Route::post('/employe/verify-email', [EmployeController::class, 'verifyEmail']);
 // Password reset
 Route::post('/forgot-password', [UtilisateurController::class, 'forgotPassword']);
 Route::post('/reset-password', [UtilisateurController::class, 'resetPassword']);
@@ -40,6 +38,7 @@ Route::middleware(['jwt.custom'])->group(function () {
     Route::post('/logout', [UtilisateurController::class, 'logout']);
     Route::post('/employe/logout', [EmployeAuthController::class, 'logout']);
     Route::post('/auth/refresh', [AuthController::class, 'refresh']);
+    Route::post('/employes/{id}/resend-verification', [EmployeController::class, 'resendVerification']);
 
     // ── Produits ──────────────────────────────────────────────────────────
     Route::get('/products', [ProductController::class, 'index']);
@@ -54,7 +53,7 @@ Route::middleware(['jwt.custom'])->group(function () {
     Route::get('/ventes/autocomplete', [FactureController::class, 'autocomplete']);
     Route::get('/ventes/search', [FactureController::class, 'searchByReference']);
 
-    // ✅ Classe complète au lieu de l'alias 'check.caisse'
+    //  Classe complète au lieu de l'alias 'check.caisse'
     Route::post('/ventes', [VenteController::class, 'store'])
         ->middleware(CheckCaissePlafond::class);
 
@@ -83,7 +82,7 @@ Route::middleware(['jwt.custom'])->group(function () {
     Route::delete('/clients/{id}', [ClientController::class, 'destroy']);
 
     // ── Remboursements ────────────────────────────────────────────────────
-    // ✅ Classe complète au lieu de l'alias 'check.caisse'
+    // Classe complète au lieu de l'alias 'check.caisse'
     Route::post('/remboursements', [RemboursementController::class, 'store'])
         ->middleware(CheckCaissePlafond::class);
 
@@ -103,11 +102,11 @@ Route::middleware(['jwt.custom'])->group(function () {
         // Ticket PDF d'un prélèvement
         Route::get('/ticket/{mouvementId}', [CaisseController::class, 'ticket']);
  
-        // ✅ Bilan (POST — solde_reel obligatoire, sauvegarde + génère référence)
+        //  Bilan (POST — solde_reel obligatoire, sauvegarde + génère référence)
         // ⚠️  AVANT /bilan/{bilanId} pour éviter que Laravel interprète 'bilan' comme {bilanId}
         Route::post('/bilan', [CaisseController::class, 'bilan']);
  
-        // ✅ Ticket PDF d'un bilan
+        //  Ticket PDF d'un bilan
         Route::get('/bilan/ticket/{bilanId}', [CaisseController::class, 'ticketBilan']);
  
         // ✅ Historique des bilans (patron uniquement)
@@ -120,6 +119,15 @@ Route::middleware(['jwt.custom'])->group(function () {
         Route::put('/plafond-global', [CaisseController::class, 'modifierPlafondGlobal']);
         Route::put('/{id}/plafond', [CaisseController::class, 'modifierPlafond']);
 
+    });
+
+    Route::prefix('depenses')->group(function () {
+    Route::get('/resume',           [DepenseController::class, 'resume']);
+    Route::get('/stats-annuelles',  [DepenseController::class, 'statsAnnuelles']);
+    Route::get('/',                  [DepenseController::class, 'index']);
+    Route::post('/',                 [DepenseController::class, 'store']);
+    Route::put('/{id}',             [DepenseController::class, 'update']);
+    Route::delete('/{id}',          [DepenseController::class, 'destroy']);
     });
 
 });

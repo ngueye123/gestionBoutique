@@ -16,7 +16,8 @@ import { useAuthStore } from './store/authStore'
 import Clients from './pages/Clients'
 import ClientDetails from './pages/ClientDetails'
 import Caisse from './pages/Caisse'
-
+import Depenses from './pages/Depenses'
+import VerifyEmployeEmail from './pages/VerifyEmployeEmail';
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore(state => state.token)
   const isAuthLoaded = useAuthStore(state => state.isAuthLoaded)
@@ -73,6 +74,7 @@ export default function App() {
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/employe/verify-email" element={<VerifyEmployeEmail />} />
 
         {/* Routes privées — Layout commun */}
         <Route
@@ -149,6 +151,16 @@ export default function App() {
             element={
               <RoleGuard allowedRoles={['patron', 'admin', 'vendeur', 'caissier']}>
                 <ClientDetails />
+              </RoleGuard>
+            }
+          />
+
+          {/* Dépenses — Patrons uniquement */}
+          <Route
+            path="depenses"
+            element={
+              <RoleGuard requirePatron>
+                <Depenses />
               </RoleGuard>
             }
           />

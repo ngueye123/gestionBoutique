@@ -36,14 +36,6 @@ class ProductController extends Controller
         return response()->json([
             'success' => true,
             'products' => $products,
-            'debug' => [
-                'owner_id' => $ownerId,
-                'user_id' => $user->id,
-                'user_type' => get_class($user) === 'App\Models\Employe' ? 'employe' : 'patron',
-                'products_count' => $products->count(),
-                'is_employe' => get_class($user) === 'App\Models\Employe',
-                'is_patron' => get_class($user) === 'App\Models\Utilisateur',
-            ]
         ]);
     }
 

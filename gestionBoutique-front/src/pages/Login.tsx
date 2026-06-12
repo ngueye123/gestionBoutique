@@ -9,7 +9,7 @@ import { User, Users } from 'lucide-react';
 import { PatronUser, EmployeUser } from '../types';
 import ResendVerification from '../components/ResendVerification';
 import { PasswordInput } from '../components/PasswordInput';
-
+import { Mail } from 'lucide-react';
 const loginSchema = z.object({
   email: z.string().email('Adresse email invalide'),
   mot_de_passe: z.string().min(6, 'Le mot de passe doit contenir au moins 6 caractères'),
@@ -31,7 +31,7 @@ function Login() {
   const [userType, setUserType] = useState<'patron' | 'employe'>('patron');
   const [loading, setLoading] = useState(false);
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
-
+  const [unverifiedEmployeEmail, setUnverifiedEmployeEmail] = useState<string | null>(null);
   const { register, handleSubmit, formState: { errors } } = useForm<LoginForm>({
     resolver: zodResolver(loginSchema),
   });
@@ -84,10 +84,17 @@ function Login() {
           navigate(getRedirectPath('employe', result.employe.role), { replace: true });
         }
       } else {
-        if (result.email_verified === false) {
-          setUnverifiedEmail(data.email);
+        if (!result.success) {
+          // Cas email non vérifié pour l'employé
+          if (result.email_verified === false && userType === 'employe') {
+            setUnverifiedEmployeEmail(data.email);
+          }
+          // Cas email non vérifié pour le patron 
+          if (result.email_verified === false && userType === 'patron') {
+            setUnverifiedEmail(data.email);
+          }
+          toast.error(result.message || 'Identifiants invalides');
         }
-        toast.error(result.message || 'Identifiants invalides');
       }
     } catch (error: any) {
       console.error('Erreur de connexion:', error);
@@ -95,6 +102,8 @@ function Login() {
     } finally {
       setLoading(false);
     }
+
+
   };
 
   return (
@@ -169,6 +178,27 @@ function Login() {
             {loading ? 'Connexion...' : `Se connecter en tant que ${userType}`}
           </button>
         </form>
+
+        {unverifiedEmployeEmail && userType === 'employe' && (
+          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-4">
+            <div className="flex items-start">
+              <Mail className="w-5 h-5 text-yellow-600 mt-0.5 mr-3 flex-shrink-0" />
+              <div>
+                <h3 className="text-sm font-medium text-yellow-800">
+                  Email non vérifié
+                </h3>
+                <p className="text-sm text-yellow-700 mt-1">
+                  Votre compte n'est pas encore activé. Consultez votre boîte mail
+                  ({unverifiedEmployeEmail}) et cliquez sur le lien de vérification.
+                </p>
+                <p className="text-xs text-yellow-600 mt-2">
+                  Si vous n'avez pas reçu l'email, demandez à votre patron de renvoyer
+                  le lien depuis la page Employés.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {unverifiedEmail && userType === 'patron' && (
           <ResendVerification email={unverifiedEmail} />

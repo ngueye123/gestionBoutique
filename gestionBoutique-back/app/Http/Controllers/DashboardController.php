@@ -83,6 +83,8 @@ class DashboardController extends Controller
 
             // --- TOP PRODUITS VENDUS ---
             $topProducts = $this->getTopProducts($ownerId, $startDate, $endDate);
+            // Calcul du bénéfice sur la même période
+            $beneficePeriode = $this->getBeneficePeriode($ownerId, $startDate, $endDate);
 
             return response()->json([
                 'success' => true,
@@ -98,6 +100,9 @@ class DashboardController extends Controller
                 'todaySales' => (float) $todaySales,
                 'monthSales' => (float) $monthSales,
                 'topProducts' => $topProducts,
+                'depenses_periode' => $beneficePeriode['total_depenses'],
+                'benefice_periode' => $beneficePeriode['benefice'],
+                'depenses_history' => $beneficePeriode['history'],
                 'period' => [
                     'type' => $period,
                     'start_date' => $startDate->format('Y-m-d'),
@@ -115,6 +120,66 @@ class DashboardController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // GET /api/depenses/resume
+    // Utilisé par le DashboardController pour calculer le bénéfice.
+    // Paramètres obligatoires : start_date, end_date (YYYY-MM-DD)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    public function resume(Request $request): JsonResponse
+    {
+        $patron = $this->assertPatron();
+
+        $request->validate([
+            'start_date' => 'required|date',
+            'end_date'   => 'required|date|after_or_equal:start_date',
+        ]);
+
+        $debut = $request->start_date;
+        $fin   = $request->end_date;
+
+        // Total des dépenses sur la plage
+        $total = (float) Depense::byUtilisateur($patron->id)
+            ->parPeriode($debut, $fin)
+            ->sum('montant');
+
+        // Détail jour par jour (même structure que salesHistory du dashboard)
+        $parJour = Depense::byUtilisateur($patron->id)
+            ->parPeriode($debut, $fin)
+            ->select(
+                DB::raw('DATE(date_depense) as date'),
+                DB::raw('SUM(montant) as montant'),
+                DB::raw('COUNT(*) as count')
+            )
+            ->groupBy(DB::raw('DATE(date_depense)'))
+            ->orderBy('date')
+            ->get()
+            ->keyBy('date');
+
+        // Remplir tous les jours de la plage avec 0 si aucune dépense
+        $history  = [];
+        $cursor   = \Carbon\Carbon::parse($debut);
+        $dateFin  = \Carbon\Carbon::parse($fin);
+
+        while ($cursor->lte($dateFin)) {
+            $dateStr   = $cursor->format('Y-m-d');
+            $row       = $parJour->get($dateStr);
+            $history[] = [
+                'date'    => $dateStr,
+                'montant' => $row ? (float) $row->montant : 0.0,
+                'count'   => $row ? (int)   $row->count   : 0,
+            ];
+            $cursor->addDay();
+        }
+
+        return response()->json([
+            'success' => true,
+            'total'   => $total,
+            'history' => $history,
+            'periode' => ['start_date' => $debut, 'end_date' => $fin],
+        ]);
     }
 
     /**
@@ -276,5 +341,63 @@ class DashboardController extends Controller
             default:
                 return '7 derniers jours';
         }
+    }
+
+    /**
+     * Calcule les dépenses et le bénéfice sur une période donnée.
+     * Bénéfice = chiffre d'affaires de la période − dépenses de la période.
+     * Utilise date_depense (colonne du modèle Depense) et non created_at.
+     *
+     * @return array{total_depenses: float, benefice: float, history: array}
+     */
+    private function getBeneficePeriode(int $ownerId, Carbon $startDate, Carbon $endDate): array
+    {
+        $debutStr = $startDate->format('Y-m-d');
+        $finStr   = $endDate->format('Y-m-d');
+
+        // Total des dépenses sur la période
+        $totalDepenses = (float) DB::table('depenses')
+            ->where('utilisateur_id', $ownerId)
+            ->whereBetween('date_depense', [$debutStr, $finStr])
+            ->sum('montant');
+
+        // Chiffre d'affaires sur la même période (déjà calculé dans getSalesByPeriod
+        // mais on recalcule ici pour rester indépendant)
+        $chiffreAffaires = (float) DB::table('ventes')
+            ->where('utilisateur_id', $ownerId)
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->sum('total');
+
+        // Dépenses par jour pour le tableau comparatif jour par jour
+        $depensesParJour = DB::table('depenses')
+            ->select(
+                DB::raw('DATE(date_depense) as date'),
+                DB::raw('SUM(montant) as montant')
+            )
+            ->where('utilisateur_id', $ownerId)
+            ->whereBetween('date_depense', [$debutStr, $finStr])
+            ->groupBy(DB::raw('DATE(date_depense)'))
+            ->get()
+            ->keyBy('date');
+
+        // Tableau jour par jour aligné sur la période du dashboard
+        $history = [];
+        $cursor  = $startDate->copy();
+
+        while ($cursor->lte($endDate)) {
+            $dateStr   = $cursor->format('Y-m-d');
+            $row       = $depensesParJour->get($dateStr);
+            $history[] = [
+                'date'    => $dateStr,
+                'montant' => $row ? (float) $row->montant : 0.0,
+            ];
+            $cursor->addDay();
+        }
+
+        return [
+            'total_depenses' => $totalDepenses,
+            'benefice'       => $chiffreAffaires - $totalDepenses,
+            'history'        => $history,
+        ];
     }
 }

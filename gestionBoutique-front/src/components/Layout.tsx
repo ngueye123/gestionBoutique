@@ -1,10 +1,10 @@
 import React, { useEffect } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Package, ShoppingCart, Users, LogOut, User, UserCircle } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, Users, LogOut, User, UserCircle, TrendingDown } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { EmployeUser } from '../types';
 import { Wallet } from 'lucide-react';
-import { CaisseIndicateur } from './CaisseIndicateur';
+//import { TrendingDown } from 'lucide-react';
 function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -109,6 +109,16 @@ function Layout() {
             <Link to="/clients" className={linkClass('/clients')}>
               <UserCircle className="w-5 h-5 mr-2" />
               Clients
+            </Link>
+          )}
+
+          
+
+          {/* Dépenses */}
+          {canManageEmployees() && (
+            <Link to="/depenses" className={linkClass('/depenses')}>
+              <TrendingDown className="w-5 h-5 mr-2" />
+              Dépenses
             </Link>
           )}
 
