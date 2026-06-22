@@ -79,21 +79,12 @@ class Vente extends Model
     public static function generateReference(): string
     {
         $date = now()->format('Ymd');
-        
-        // Trouver la dernière référence du jour
-        $lastVente = self::whereDate('created_at', today())
-            ->orderBy('id', 'desc')
-            ->first();
-        
-        $count = 1;
-        if ($lastVente && $lastVente->reference) {
-            // Extraire le numéro de la dernière référence
-            preg_match('/VT-\d{8}-(\d{4})/', $lastVente->reference, $matches);
-            if (isset($matches[1])) {
-                $count = intval($matches[1]) + 1;
-            }
-        }
-        
+        $cle  = "vente_{$date}"; // une séquence différente chaque jour
+
+        // Sequence::next() est atomique — garantit l'unicité même en cas
+        // de ventes parfaitement simultanées
+        $count = Sequence::next($cle);
+
         return 'VT-' . $date . '-' . str_pad($count, 4, '0', STR_PAD_LEFT);
     }
 

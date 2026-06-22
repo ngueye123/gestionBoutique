@@ -295,28 +295,20 @@ class UtilisateurController extends Controller
     // Déconnexion
     public function logout()
     {
-        try {
-            $token = JWTAuth::parseToken()->getToken();
-            
-            if (!$token) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Token manquant'
-                ], 400);
-            }
-            
-            JWTAuth::invalidate($token);
+        $token = JWTAuth::parseToken()->getToken();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Déconnexion réussie'
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Erreur logout: ' . $e->getMessage());
+        if (!$token) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la déconnexion'
-            ], 500);
+                'message' => 'Token manquant'
+            ], 400);
         }
+
+        JWTAuth::invalidate($token);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Déconnexion réussie'
+        ], 200);
     }
 }

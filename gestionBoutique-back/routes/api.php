@@ -41,81 +41,81 @@ Route::middleware(['jwt.custom'])->group(function () {
     Route::post('/employes/{id}/resend-verification', [EmployeController::class, 'resendVerification']);
 
     // ── Produits ──────────────────────────────────────────────────────────
-    Route::get('/products', [ProductController::class, 'index']);
-    Route::put('/products/{id}/update-stock', [ProductController::class, 'updateStock']);
+    Route::prefix('products')->group(function () {
+        Route::get('/', [ProductController::class, 'index']);
+        Route::put('/{id}/update-stock', [ProductController::class, 'updateStock']);
 
-    // Seulement patron et admin
-    Route::post('/products', [ProductController::class, 'store']);
-    Route::put('/products/{id}', [ProductController::class, 'update']);
-    Route::delete('/products/{id}', [ProductController::class, 'destroy']);
+        // Seulement patron et admin
+        Route::post('/', [ProductController::class, 'store']);
+        Route::put('/{id}', [ProductController::class, 'update']);
+        Route::delete('/{id}', [ProductController::class, 'destroy']);
+    });
 
     // ── Ventes ────────────────────────────────────────────────────────────
-    Route::get('/ventes/autocomplete', [FactureController::class, 'autocomplete']);
-    Route::get('/ventes/search', [FactureController::class, 'searchByReference']);
+    Route::prefix('ventes')->group(function () {
+        Route::get('/autocomplete', [FactureController::class, 'autocomplete']);
+        Route::get('/search', [FactureController::class, 'searchByReference']);
 
-    //  Classe complète au lieu de l'alias 'check.caisse'
-    Route::post('/ventes', [VenteController::class, 'store'])
-        ->middleware(CheckCaissePlafond::class);
+        //  Classe complète au lieu de l'alias 'check.caisse'
+        Route::post('/', [VenteController::class, 'store'])
+            ->middleware(CheckCaissePlafond::class);
 
-    Route::get('/ventes', [VenteController::class, 'index']);
-    Route::get('/ventes/{id}', [VenteController::class, 'show']);
-
-    // ── Factures ──────────────────────────────────────────────────────────
-    Route::get('/ventes/{id}/facture', [FactureController::class, 'generateFacture']);
-    Route::get('/ventes/{id}/facture/preview', [FactureController::class, 'previewFacture']);
+        Route::get('/', [VenteController::class, 'index']);
+        Route::get('/{id}', [VenteController::class, 'show']);
+        Route::get('/{id}/facture', [FactureController::class, 'generateFacture']);
+        Route::get('/{id}/facture/preview', [FactureController::class, 'previewFacture']);
+    });
 
     // ── Dashboard ─────────────────────────────────────────────────────────
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
 
     // ── Employés ──────────────────────────────────────────────────────────
-    Route::post('/employes', [EmployeController::class, 'store']);
-    Route::get('/employes', [EmployeController::class, 'index']);
-    Route::delete('/employes/{id}', [EmployeController::class, 'destroy']);
-    Route::put('/employes/{id}/role', [EmployeController::class, 'updateRole']);
+    Route::prefix('employes')->group(function () {
+        Route::post('/', [EmployeController::class, 'store']);
+        Route::get('/', [EmployeController::class, 'index']);
+        Route::delete('/{id}', [EmployeController::class, 'destroy']);
+        Route::put('/{id}/role', [EmployeController::class, 'updateRole']);
+        Route::post('/{id}/resend-verification', [EmployeController::class, 'resendVerification']);
+    });
 
     // ── Clients ───────────────────────────────────────────────────────────
-    Route::get('/clients', [ClientController::class, 'index']);
-    Route::post('/clients', [ClientController::class, 'store']);
-    Route::get('/clients/search', [ClientController::class, 'search']);
-    Route::get('/clients/{id}', [ClientController::class, 'show']);
-    Route::put('/clients/{id}', [ClientController::class, 'update']);
-    Route::delete('/clients/{id}', [ClientController::class, 'destroy']);
+    Route::prefix('clients')->group(function () {
+        Route::get('/search', [ClientController::class, 'search']);
+        Route::get('/', [ClientController::class, 'index']);
+        Route::post('/', [ClientController::class, 'store']);
+        Route::get('/{id}', [ClientController::class, 'show']);
+        Route::put('/{id}', [ClientController::class, 'update']);
+        Route::delete('/{id}', [ClientController::class, 'destroy']);
+        Route::get('/{id}/remboursements', [RemboursementController::class, 'historiqueClient']);
+    });
 
     // ── Remboursements ────────────────────────────────────────────────────
-    // Classe complète au lieu de l'alias 'check.caisse'
-    Route::post('/remboursements', [RemboursementController::class, 'store'])
-        ->middleware(CheckCaissePlafond::class);
+    Route::prefix('remboursements')->group(function () {
+        // Classe complète au lieu de l'alias 'check.caisse'
+        Route::post('/', [RemboursementController::class, 'store'])
+            ->middleware(CheckCaissePlafond::class);
 
-    Route::get('/remboursements', [RemboursementController::class, 'index']);
-    Route::get('/remboursements/{id}', [RemboursementController::class, 'show']);
-    Route::get('/clients/{id}/remboursements', [RemboursementController::class, 'historiqueClient']);
+        Route::get('/', [RemboursementController::class, 'index']);
+        Route::get('/{id}', [RemboursementController::class, 'show']);
+    });
 
     // ── Caisse ────────────────────────────────────────────────────────────
     Route::prefix('caisse')->group(function () {
-
        // Ma caisse + historique mouvements (sans ventes)
         Route::get('/moi', [CaisseController::class, 'maCaisse']);
- 
         // Apport ou prélèvement
         Route::post('/mouvement', [CaisseController::class, 'mouvement']);
- 
         // Ticket PDF d'un prélèvement
         Route::get('/ticket/{mouvementId}', [CaisseController::class, 'ticket']);
- 
         //  Bilan (POST — solde_reel obligatoire, sauvegarde + génère référence)
-        // ⚠️  AVANT /bilan/{bilanId} pour éviter que Laravel interprète 'bilan' comme {bilanId}
         Route::post('/bilan', [CaisseController::class, 'bilan']);
- 
         //  Ticket PDF d'un bilan
         Route::get('/bilan/ticket/{bilanId}', [CaisseController::class, 'ticketBilan']);
- 
-        // ✅ Historique des bilans (patron uniquement)
+        // Historique des bilans (patron uniquement)
         Route::get('/bilans', [CaisseController::class, 'historiqueBilans']);
- 
         // Vue globale toutes caisses (patron/admin uniquement)
         Route::get('/toutes', [CaisseController::class, 'toutes']);
- 
-        // ⚠️ plafond-global AVANT /{id}/plafond
+        //plafond-global AVANT /{id}/plafond
         Route::put('/plafond-global', [CaisseController::class, 'modifierPlafondGlobal']);
         Route::put('/{id}/plafond', [CaisseController::class, 'modifierPlafond']);
 

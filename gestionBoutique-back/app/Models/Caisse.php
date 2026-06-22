@@ -78,15 +78,19 @@ class Caisse extends Model
     // Opérations
     // ─────────────────────────────────────────────────────────────────────────
 
-    public function crediter(
-        float   $montant,
-        string  $type = 'vente',
-        ?int    $venteId = null,
-        ?string $note = null
-    ): MouvementCaisse {
-        $soldeAvant         = $this->solde_actuel;
-        $this->solde_actuel += $montant;
-        $this->save();
+    public function crediter(float $montant, string $type = 'vente', ?int $venteId = null, ?string $note = null): MouvementCaisse
+    {
+        // On capture le solde avant via une lecture fraîche et verrouillée,
+        // pour que le mouvement enregistré reflète l'état réel au moment du crédit
+        $caisseVerrouillee = self::where('id', $this->id)->lockForUpdate()->first();
+        $soldeAvant         = $caisseVerrouillee->solde_actuel;
+
+        // increment() génère un UPDATE atomique : solde_actuel = solde_actuel + montant
+        // Impossible que deux appels concurrents s'écrasent l'un l'autre
+        self::where('id', $this->id)->increment('solde_actuel', $montant);
+
+        // Recharger l'instance courante pour refléter le nouveau solde
+        $this->refresh();
 
         return MouvementCaisse::create([
             'caisse_id'        => $this->id,
@@ -103,9 +107,13 @@ class Caisse extends Model
 
     public function debiter(float $montant, ?string $note = null): MouvementCaisse
     {
-        $soldeAvant         = $this->solde_actuel;
-        $this->solde_actuel -= $montant;
-        $this->save();
+        $caisseVerrouillee = self::where('id', $this->id)->lockForUpdate()->first();
+        $soldeAvant         = $caisseVerrouillee->solde_actuel;
+
+        // decrement() est l'équivalent atomique pour les sorties
+        self::where('id', $this->id)->decrement('solde_actuel', $montant);
+
+        $this->refresh();
 
         $count     = MouvementCaisse::whereDate('created_at', today())
             ->where('type', 'prelevement')

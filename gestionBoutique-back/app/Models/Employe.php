@@ -9,11 +9,10 @@ use Illuminate\Notifications\Notifiable; // ← AJOUT pour pouvoir envoyer des e
 
 class Employe extends Authenticatable implements JWTSubject
 {
-    use Notifiable; // ← AJOUT
+    use Notifiable; 
 
     protected $table      = 'employes';
     protected $primaryKey = 'id';
-    public $timestamps    = false;
 
     protected $fillable = [
         'nom',
@@ -21,14 +20,14 @@ class Employe extends Authenticatable implements JWTSubject
         'mot_de_passe',
         'role',
         'utilisateur_id',
-        'email_verified_at',   // ← AJOUT
-        'verification_token',  // ← AJOUT
+        'email_verified_at',   
+        'verification_token',  
     ];
 
     protected $hidden = ['mot_de_passe', 'verification_token'];
 
     protected $casts = [
-        'email_verified_at' => 'datetime', // ← AJOUT pour le cast automatique
+        'email_verified_at' => 'datetime', 
     ];
 
     protected $appends = ['user_type'];

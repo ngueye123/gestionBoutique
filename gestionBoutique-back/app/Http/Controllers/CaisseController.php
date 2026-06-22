@@ -9,9 +9,15 @@ use App\Models\Employe;
 use App\Models\Utilisateur;
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
-
+use App\Services\CaisseService;
+use Illuminate\Support\Facades\DB;
 class CaisseController extends Controller
 {
+     public function __construct(
+        private readonly CaisseService $caisseService,
+        private readonly DashboardCacheService $dashboardCache,
+    ) {}
+
     // ─────────────────────────────────────────────────────────────────────────
     // GET /caisse/moi
     // ─────────────────────────────────────────────────────────────────────────
@@ -22,32 +28,32 @@ class CaisseController extends Controller
         $caisse = Caisse::pour($actor);
         $alerte = $caisse->statutAlerte();
 
+        $perPage = min((int) $request->input('per_page', 50), 100); // plafonné à 100 max
+
         $mouvements = MouvementCaisse::where('caisse_id', $caisse->id)
             ->whereIn('type', ['apport', 'prelevement', 'remboursement_dette'])
             ->orderByDesc('created_at')
-            ->limit(50)
-            ->get();
+            ->paginate($perPage); 
 
-        // ✅ Si patron → récupérer aussi les mouvements de tous les employés
+        // Si patron → récupérer aussi les mouvements de tous les employés
         $mouvementsEmployes = collect();
         if (!($actor instanceof Employe) && $this->estPatronOuAdmin($actor)) {
             $caisseIds = Caisse::where('utilisateur_id', $actor->id)
                 ->whereNotNull('employe_id') // uniquement les caisses employés
                 ->pluck('id');
 
-            $mouvementsEmployes = MouvementCaisse::whereIn('caisse_id', $caisseIds)
-                ->whereIn('type', ['apport', 'prelevement', 'remboursement_dette'])
-                ->with('caisse.employe') // pour avoir le nom de l'employé
-                ->orderByDesc('created_at')
-                ->limit(100)
-                ->get()
-                ->map(function ($m) {
-                    // Ajouter le nom du caissier sur chaque mouvement
-                    $m->caissier = $m->caisse && $m->caisse->employe
-                        ? $m->caisse->employe->nom
-                        : 'Patron';
-                    return $m;
-                });
+           $mouvementsEmployes = MouvementCaisse::query()
+            ->select(
+                'mouvements_caisse.*',
+                DB::raw("COALESCE(employes.nom, 'Patron') as caissier")
+            )
+            ->whereIn('mouvements_caisse.caisse_id', $caisseIds)
+            ->whereIn('mouvements_caisse.type', ['apport', 'prelevement', 'remboursement_dette'])
+            ->leftJoin('caisses', 'caisses.id', '=', 'mouvements_caisse.caisse_id')
+            ->leftJoin('employes', 'employes.id', '=', 'caisses.employe_id')
+            ->orderByDesc('mouvements_caisse.created_at')
+            ->limit(100)
+            ->get();
         }
 
         return response()->json([
@@ -63,6 +69,8 @@ class CaisseController extends Controller
     // ─────────────────────────────────────────────────────────────────────────
     // POST /caisse/mouvement
     // ─────────────────────────────────────────────────────────────────────────
+  
+
     public function mouvement(Request $request)
     {
         $request->validate([
@@ -71,32 +79,48 @@ class CaisseController extends Controller
             'note'    => 'nullable|string|max:255',
         ]);
 
-        $actor   = $this->getActor();
-        $caisse  = Caisse::pour($actor);
+        $actor   = $this->actorResolver->resolve();
         $type    = $request->type;
         $montant = floatval($request->montant);
 
-        if ($type === 'prelevement' && $montant > $caisse->solde_actuel) {
+        DB::beginTransaction();
+
+        try {
+            $caisse = Caisse::pour($actor);
+
+            if ($type === 'prelevement') {
+                $caisseVerrouillee = Caisse::where('id', $caisse->id)->lockForUpdate()->first();
+
+                if ($montant > $caisseVerrouillee->solde_actuel) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Le montant ({$montant} F) dépasse le solde disponible ({$caisseVerrouillee->solde_actuel} F).",
+                    ], 422);
+                }
+            }
+
+            $mouvement = $type === 'prelevement'
+                ? $caisse->debiter($montant, $request->note)
+                : $caisse->crediter($montant, 'apport', null, $request->note);
+
+            DB::commit();
+
+            $caisse->refresh();
+
+            // Conserver l'objet Caisse complet — le frontend utilise caisse.id et caisse.est_bloquee
             return response()->json([
-                'success' => false,
-                'message' => "Le montant ({$montant} F) dépasse le solde disponible ({$caisse->solde_actuel} F).",
-            ], 422);
+                'success'   => true,
+                'mouvement' => $mouvement,
+                'caisse'    => $caisse, // ← objet complet, PAS buildCaisseInfo()
+                'statut'    => $caisse->statutAlerte(),
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
         }
-
-        $mouvement = $type === 'prelevement'
-            ? $caisse->debiter($montant, $request->note)
-            : $caisse->crediter($montant, 'apport', null, $request->note);
-
-        $caisse->refresh();
-
-        return response()->json([
-            'success'   => true,
-            'mouvement' => $mouvement,
-            'caisse'    => $caisse,
-            'statut'    => $caisse->statutAlerte(),
-        ], 201);
     }
-
     // ─────────────────────────────────────────────────────────────────────────
     // GET /caisse/ticket/{mouvementId}
     // ─────────────────────────────────────────────────────────────────────────
@@ -139,7 +163,7 @@ class CaisseController extends Controller
         $actor  = $this->getActor();
         $caisse = Caisse::pour($actor);
 
-        $bilan = $this->calculerEtSauvegarderBilan(
+        $bilan = $this->caisseService->calculerEtSauvegarderBilan(
             $caisse,
             $request->start_date,
             $request->end_date,
@@ -302,7 +326,7 @@ class CaisseController extends Controller
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
-     * ✅ Détecte l'acteur connecté en testant les deux guards JWT.
+     * Détecte l'acteur connecté en testant les deux guards JWT.
      *
      * Votre auth.php définit :
      *   - guard 'api'     → driver jwt → provider Utilisateur (patron)
@@ -337,86 +361,7 @@ class CaisseController extends Controller
         abort(401, 'Non authentifié.');
     }
 
-    private function calculerEtSauvegarderBilan(
-        Caisse $caisse,
-        string $debut,
-        string $fin,
-        float  $soldeReel,
-        $actor
-    ): array {
-        $mouvements     = MouvementCaisse::where('caisse_id', $caisse->id)
-            ->whereBetween('created_at', [$debut . ' 00:00:00', $fin . ' 23:59:59'])
-            ->get();
-
-        $entrees        = $mouvements->whereIn('type', ['vente', 'apport', 'remboursement_dette'])->sum('montant');
-        $sorties        = $mouvements->where('type', 'prelevement')->sum('montant');
-        $soldeDebut     = $this->calculerSoldeDebut($caisse, $debut);
-        $soldeTheorique = $soldeDebut + $entrees - $sorties;
-        $ecart          = $soldeReel - $soldeTheorique;
-
-        $statutEcart = match(true) {
-            $ecart == 0 => 'equilibre',
-            $ecart > 0  => 'surplus',
-            default     => 'manquant',
-        };
-
-        $reference = 'BILAN-' . now()->format('Ymd') . '-'
-            . str_pad(BilanCaisse::whereDate('created_at', today())->count() + 1, 4, '0', STR_PAD_LEFT);
-
-        $bilan = BilanCaisse::create([
-            'caisse_id'             => $caisse->id,
-            'utilisateur_id'        => $this->utilisateurId($actor),
-            'date_debut'            => $debut,
-            'date_fin'              => $fin,
-            'solde_debut'           => $soldeDebut,
-            'total_entrees'         => $entrees,
-            'total_sorties'         => $sorties,
-            'solde_theorique'       => $soldeTheorique,
-            'solde_reel'            => $soldeReel,
-            'ecart'                 => $ecart,
-            'nombre_ventes'         => $mouvements->where('type', 'vente')->count(),
-            'nombre_remboursements' => $mouvements->where('type', 'remboursement_dette')->count(),
-            'nombre_prelevements'   => $mouvements->where('type', 'prelevement')->count(),
-            'statut_ecart'          => $statutEcart,
-            'ticket_reference'      => $reference,
-            'effectue_par'          => $this->getNomActeur($actor),
-        ]);
-
-        return [
-            'bilan_id'              => $bilan->id,
-            'acteur'                => $caisse->employe ? $caisse->employe->nom : 'Patron',
-            'caisse_id'             => $caisse->id,
-            'ticket_reference'      => $reference,
-            'solde_debut'           => $soldeDebut,
-            'total_entrees'         => $entrees,
-            'total_sorties'         => $sorties,
-            'solde_theorique'       => $soldeTheorique,
-            'solde_reel'            => $soldeReel,
-            'ecart'                 => $ecart,
-            'statut_ecart'          => $statutEcart,
-            'nombre_ventes'         => $bilan->nombre_ventes,
-            'nombre_remboursements' => $bilan->nombre_remboursements,
-            'nombre_prelevements'   => $bilan->nombre_prelevements,
-        ];
-    }
-
-    private function calculerSoldeDebut(Caisse $caisse, string $dateDebut): float
-    {
-        $mouvementsApres = MouvementCaisse::where('caisse_id', $caisse->id)
-            ->where('created_at', '>=', $dateDebut . ' 00:00:00')
-            ->orderByDesc('created_at')
-            ->get();
-
-        $solde = $caisse->solde_actuel;
-        foreach ($mouvementsApres as $m) {
-            if (in_array($m->type, ['vente', 'apport', 'remboursement_dette'])) {
-                $solde -= $m->montant;
-            } else {
-                $solde += $m->montant;
-            }
-        }
-        return max(0, $solde);
-    }
+   
 
     private function getBoutique($actor)
     {
@@ -428,10 +373,7 @@ class CaisseController extends Controller
 
     private function getNomActeur($actor): string
     {
-        if ($actor instanceof Employe) {
-            return $actor->nom ?? 'Employé';
-        }
-        return $actor->nom_boutique ?? $actor->nom ?? $actor->prenom ?? $actor->email ?? 'Patron';
+        return $this->caisseService->resolveNomActeur($actor);
     }
 
     private function estPatronOuAdmin($actor): bool
@@ -446,8 +388,6 @@ class CaisseController extends Controller
 
     private function utilisateurId($actor): int
     {
-        return $actor instanceof Employe
-            ? $actor->utilisateur_id
-            : $actor->id;
+        return $this->caisseService->resolveUtilisateurId($actor);
     }
 }

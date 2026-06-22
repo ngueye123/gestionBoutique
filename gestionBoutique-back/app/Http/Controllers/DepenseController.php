@@ -1,5 +1,4 @@
 <?php
-// app/Http/Controllers/DepenseController.php
 
 namespace App\Http\Controllers;
 
@@ -136,6 +135,7 @@ class DepenseController extends Controller
 
         // ── Répartition par catégorie sur la même période ─────────────────────
         $parCategorie = (clone $query)
+            ->reorder() // Supprime les ordres précédents pour le groupBy
             ->select('categorie', DB::raw('SUM(montant) as total'), DB::raw('COUNT(*) as nombre'))
             ->groupBy('categorie')
             ->get()
@@ -207,6 +207,8 @@ class DepenseController extends Controller
                 'description'    => trim($validated['description']),
                 'categorie'      => $validated['categorie'] ?? 'autre',
             ]);
+             
+            $this->dashboardCache->invalidate($ownerId);
 
             return response()->json([
                 'success'  => true,
@@ -220,12 +222,6 @@ class DepenseController extends Controller
                 'message' => 'Données invalides.',
                 'errors'  => $e->errors(),
             ], 422);
-        } catch (\Exception $e) {
-            Log::error('Erreur création dépense : ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Erreur lors de l\'enregistrement.',
-            ], 500);
         }
     }
 
@@ -254,6 +250,8 @@ class DepenseController extends Controller
                 'categorie'    => $validated['categorie'] ?? $depense->categorie,
             ]);
 
+            $this->dashboardCache->invalidate($ownerId);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Dépense mise à jour.',
@@ -266,12 +264,6 @@ class DepenseController extends Controller
                 'message' => 'Données invalides.',
                 'errors'  => $e->errors(),
             ], 422);
-        } catch (\Exception $e) {
-            Log::error('Erreur mise à jour dépense : ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Erreur lors de la mise à jour.',
-            ], 500);
         }
     }
 
@@ -283,22 +275,14 @@ class DepenseController extends Controller
     {
         $patron = $this->assertPatron();
 
-        try {
-            $depense = Depense::byUtilisateur($patron->id)->findOrFail($id);
-            $depense->delete();
+        $depense = Depense::byUtilisateur($patron->id)->findOrFail($id);
+        $depense->delete();
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Dépense supprimée.',
-            ]);
-
-        } catch (\Exception $e) {
-            Log::error('Erreur suppression dépense : ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Erreur lors de la suppression.',
-            ], 500);
-        }
+        $this->dashboardCache->invalidate($ownerId);
+        return response()->json([
+            'success' => true,
+            'message' => 'Dépense supprimée.',
+        ]);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -11,10 +11,15 @@ class Product extends Model
 
     protected $table = 'products';
     protected $primaryKey = 'id';
-    public $timestamps = false;
 
     protected $fillable = [
-        'reference', 'name', 'price', 'stock', 'category', 'min_stock', 'utilisateur_id'
+        'reference', 
+        'name',
+        'price',
+        'stock',
+        'category',
+        'min_stock',
+        'utilisateur_id'
     ];
     protected $casts = [
         'reference' => 'string',

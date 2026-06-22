@@ -6,10 +6,12 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
-
+use App\Services\DashboardCacheService;
 class ProductController extends Controller
 {
+    
     use RoleHelper;
+    public function __construct(private readonly DashboardCacheService $dashboardCache) {}
 
     /**
      * Afficher la liste des produits
@@ -77,23 +79,14 @@ class ProductController extends Controller
             ], 400);
         }
 
-        try {
-            $validated['utilisateur_id'] = $ownerId;
-            $product = Product::create($validated);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Produit ajouté avec succès',
-                'product' => $product
-            ], 201);
-        } catch (\Exception $e) {
-            Log::error('Erreur création produit: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Erreur lors de la création du produit',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+        $validated['utilisateur_id'] = $ownerId;
+        $product = Product::create($validated);
+        $this->dashboardCache->invalidate($ownerId);
+        return response()->json([
+            'success' => true,
+            'message' => 'Produit ajouté avec succès',
+            'product' => $product
+        ], 201);
     }
 
     /**
@@ -135,7 +128,7 @@ class ProductController extends Controller
         ]);
 
         $product->update($validated);
-
+        $this->dashboardCache->invalidate($ownerId);
         return response()->json([
             'success' => true,
             'message' => 'Produit mis à jour avec succès',
@@ -204,32 +197,23 @@ class ProductController extends Controller
             return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent supprimer des produits');
         }
 
-        try {
-            $ownerId = $this->getOwnerId();
-            $product = Product::where('id', $id)
-                ->where('utilisateur_id', $ownerId)
-                ->first();
+        $ownerId = $this->getOwnerId();
+        $product = Product::where('id', $id)
+            ->where('utilisateur_id', $ownerId)
+            ->first();
 
-            if (!$product) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Produit non trouvé pour ce patron'
-                ], 404);
-            }
-
-            $product->delete();
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Produit supprimé avec succès'
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Erreur suppression produit: ' . $e->getMessage());
+        if (!$product) {
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la suppression du produit',
-                'error' => $e->getMessage(),
-            ], 500);
+                'message' => 'Produit non trouvé pour ce patron'
+            ], 404);
         }
+
+        $product->delete();
+        $this->dashboardCache->invalidate($ownerId);
+        return response()->json([
+            'success' => true,
+            'message' => 'Produit supprimé avec succès'
+        ]);
     }
 }

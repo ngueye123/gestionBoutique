@@ -41,69 +41,51 @@ class EmployeAuthController extends Controller
             ], 403);
         }
 
-        try {
-            $token = JWTAuth::fromUser($employe);
+        $token = JWTAuth::fromUser($employe);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Connexion réussie',
-                'token'   => $token,
-                'employe' => [
-                    'id'             => $employe->id,
-                    'nom'            => $employe->nom,
-                    'email'          => $employe->email,
-                    'role'           => $employe->role,
-                    'utilisateur_id' => $employe->utilisateur_id,
-                    'user_type'      => 'employe',
-                ],
-                'user_type' => 'employe',
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Erreur login employé: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Erreur lors de la génération du token: ' . $e->getMessage(),
-            ], 500);
-        }
+        return response()->json([
+            'success' => true,
+            'message' => 'Connexion réussie',
+            'token'   => $token,
+            'employe' => [
+                'id'             => $employe->id,
+                'nom'            => $employe->nom,
+                'email'          => $employe->email,
+                'role'           => $employe->role,
+                'utilisateur_id' => $employe->utilisateur_id,
+                'user_type'      => 'employe',
+            ],
+            'user_type' => 'employe',
+        ]);
     }
 
     // logout() et me() sont inchangés — conserver le code existant
     public function logout()
     {
-        try {
-            $token = JWTAuth::parseToken()->getToken();
-            if (!$token) {
-                return response()->json(['success' => false, 'message' => 'Token manquant'], 400);
-            }
-            JWTAuth::invalidate($token);
-            return response()->json(['success' => true, 'message' => 'Déconnexion réussie']);
-        } catch (\Exception $e) {
-            Log::error('Erreur logout employé: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Erreur lors de la déconnexion'], 500);
+        $token = JWTAuth::parseToken()->getToken();
+        if (!$token) {
+            return response()->json(['success' => false, 'message' => 'Token manquant'], 400);
         }
+        JWTAuth::invalidate($token);
+        return response()->json(['success' => true, 'message' => 'Déconnexion réussie']);
     }
 
     public function me()
     {
-        try {
-            $employe = Auth::user();
-            if (!$employe || get_class($employe) !== 'App\Models\Employe') {
-                return response()->json(['success' => false, 'message' => 'Employé non trouvé'], 404);
-            }
-            return response()->json([
-                'success' => true,
-                'employe' => [
-                    'id'             => $employe->id,
-                    'nom'            => $employe->nom,
-                    'email'          => $employe->email,
-                    'role'           => $employe->role,
-                    'utilisateur_id' => $employe->utilisateur_id,
-                ],
-                'user_type' => 'employe',
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Erreur me employé: ' . $e->getMessage());
-            return response()->json(['success' => false, 'message' => 'Erreur lors de la récupération des informations'], 500);
+        $employe = Auth::user();
+        if (!$employe || get_class($employe) !== 'App\Models\Employe') {
+            return response()->json(['success' => false, 'message' => 'Employé non trouvé'], 404);
         }
+        return response()->json([
+            'success' => true,
+            'employe' => [
+                'id'             => $employe->id,
+                'nom'            => $employe->nom,
+                'email'          => $employe->email,
+                'role'           => $employe->role,
+                'utilisateur_id' => $employe->utilisateur_id,
+            ],
+            'user_type' => 'employe',
+        ]);
     }
 }

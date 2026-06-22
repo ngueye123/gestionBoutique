@@ -7,17 +7,15 @@ use App\Models\Vente;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 
 class DashboardController extends Controller
 {
     use RoleHelper;
 
-    /**
-     * Retourne les statistiques du tableau de bord
-     * GET /api/dashboard/stats?period=7days|month|custom&start_date=Y-m-d&end_date=Y-m-d
-     */
+    public function __construct(private readonly DashboardCacheService $dashboardCache) {}
+
     public function getStats(Request $request): JsonResponse
     {
         $ownerId = $this->getOwnerId();
@@ -36,90 +34,112 @@ class DashboardController extends Controller
             ], 403);
         }
 
-        try {
-            $now = Carbon::now();
-            $period = $request->input('period', '7days'); // 7days, month, last_month, custom
-            
-            // Déterminer les dates de début et fin selon la période
-            [$startDate, $endDate] = $this->getPeriodDates($period, $request, $now);
+        $period = $request->input('period', '7days');
 
-            // Récupérer les produits
-            $products = Product::where('utilisateur_id', $ownerId)->get();
+        // Clé versionnée — change automatiquement dès qu'une invalidation a lieu
+        $cacheKey = $this->dashboardCache->buildKey(
+            $ownerId,
+            $period,
+            $request->input('start_date'),
+            $request->input('end_date')
+        );
 
-            // --- STATISTIQUES PRODUITS ---
-            $totalProducts = $products->count();
-            $totalValue = $products->sum(fn($product) => $product->price * $product->stock);
-            $lowStockProducts = $products->filter(fn($p) => $p->stock <= $p->min_stock)->count();
+        $stats = Cache::remember($cacheKey, now()->addMinutes(10), function () use ($request, $ownerId) {
+            return $this->buildDashboardStats($request, $ownerId);
+        });
 
-            // --- STATISTIQUES DE VENTES POUR LA PÉRIODE ---
-            $periodSales = $this->getSalesByPeriod($ownerId, $startDate, $endDate, $period);
-            
-            // --- VENTES MENSUELLES (12 DERNIERS MOIS) ---
-            $monthlySales = $this->getMonthlySales($ownerId, $now);
+        return response()->json($stats);
+    }
 
-            // --- STATISTIQUES TEMPS RÉEL ---
-            $todaySales = Vente::where('utilisateur_id', $ownerId)
-                ->whereDate('created_at', today())
-                ->sum('total');
+    /**
+     * Construit les statistiques du dashboard (logique extraite de getStats()
+     * pour pouvoir être mise en cache proprement).
+     */
+    private function buildDashboardStats(Request $request, int $ownerId): array
+    {
+        $now    = Carbon::now();
+        $period = $request->input('period', '7days'); // 7days, month, last_month, custom
 
-            $monthSales = Vente::where('utilisateur_id', $ownerId)
-                ->whereMonth('created_at', $now->month)
-                ->whereYear('created_at', $now->year)
-                ->sum('total');
+        // Déterminer les dates de début et fin selon la période
+        [$startDate, $endDate] = $this->getPeriodDates($period, $request, $now);
 
-            $stockMovements = Vente::where('utilisateur_id', $ownerId)
-                ->whereDate('created_at', today())
-                ->count();
+        // --- STATISTIQUES PRODUITS ---
+        // Correction audit 6.1.2 : requêtes SQL agrégées au lieu de charger
+        // tous les produits en mémoire avec Product::get()
 
-            // --- ALERTES DE STOCK ---
-            $stockAlerts = $products
-                ->filter(fn($p) => $p->stock <= $p->min_stock)
-                ->map(fn($p) => [
-                    'id' => $p->id,
-                    'name' => $p->name,
-                    'stock' => $p->stock,
-                    'minStock' => $p->min_stock
-                ])->values();
+        $totalProducts = Product::where('utilisateur_id', $ownerId)->count();
 
-            // --- TOP PRODUITS VENDUS ---
-            $topProducts = $this->getTopProducts($ownerId, $startDate, $endDate);
-            // Calcul du bénéfice sur la même période
-            $beneficePeriode = $this->getBeneficePeriode($ownerId, $startDate, $endDate);
+        $totalValue = (float) (Product::where('utilisateur_id', $ownerId)
+            ->selectRaw('SUM(price * stock) as total')
+            ->value('total') ?? 0);
 
-            return response()->json([
-                'success' => true,
-                'totalProducts' => $totalProducts,
-                'lowStockProducts' => $lowStockProducts,
-                'totalValue' => $totalValue,
-                'stockMovements' => $stockMovements,
-                'salesHistory' => $periodSales['history'],
-                'periodTotal' => $periodSales['total'],
-                'periodCount' => $periodSales['count'],
-                'monthlySales' => $monthlySales,
-                'stockAlerts' => $stockAlerts,
-                'todaySales' => (float) $todaySales,
-                'monthSales' => (float) $monthSales,
-                'topProducts' => $topProducts,
-                'depenses_periode' => $beneficePeriode['total_depenses'],
-                'benefice_periode' => $beneficePeriode['benefice'],
-                'depenses_history' => $beneficePeriode['history'],
-                'period' => [
-                    'type' => $period,
-                    'start_date' => $startDate->format('Y-m-d'),
-                    'end_date' => $endDate->format('Y-m-d'),
-                    'label' => $this->getPeriodLabel($period, $startDate, $endDate)
-                ]
-            ]);
+        $lowStockProducts = Product::where('utilisateur_id', $ownerId)
+            ->whereColumn('stock', '<=', 'min_stock')
+            ->count();
 
-        } catch (\Exception $e) {
-            Log::error('Erreur dans DashboardController: ' . $e->getMessage());
-            
-            return response()->json([
-                'success' => false,
-                'message' => 'Erreur lors du chargement des statistiques',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+        // Pour les alertes, seule la liste filtrée est chargée — pas tous les produits
+        $stockAlerts = Product::where('utilisateur_id', $ownerId)
+            ->whereColumn('stock', '<=', 'min_stock')
+            ->select('id', 'name', 'stock', 'min_stock')
+            ->get()
+            ->map(fn($p) => [
+                'id'       => $p->id,
+                'name'     => $p->name,
+                'stock'    => $p->stock,
+                'minStock' => $p->min_stock,
+            ])
+            ->values();
+
+        // --- STATISTIQUES DE VENTES POUR LA PÉRIODE ---
+        $periodSales = $this->getSalesByPeriod($ownerId, $startDate, $endDate, $period);
+
+        // --- VENTES MENSUELLES (12 DERNIERS MOIS) ---
+        $monthlySales = $this->getMonthlySales($ownerId, $now);
+
+        // --- STATISTIQUES TEMPS RÉEL ---
+        $todaySales = Vente::where('utilisateur_id', $ownerId)
+            ->whereDate('created_at', today())
+            ->sum('total');
+
+        $monthSales = Vente::where('utilisateur_id', $ownerId)
+            ->whereMonth('created_at', $now->month)
+            ->whereYear('created_at', $now->year)
+            ->sum('total');
+
+        $stockMovements = Vente::where('utilisateur_id', $ownerId)
+            ->whereDate('created_at', today())
+            ->count();
+
+        // --- TOP PRODUITS VENDUS ---
+        $topProducts = $this->getTopProducts($ownerId, $startDate, $endDate);
+
+        // Calcul du bénéfice sur la même période
+        $beneficePeriode = $this->getBeneficePeriode($ownerId, $startDate, $endDate);
+
+        return [
+            'success'           => true,
+            'totalProducts'     => $totalProducts,
+            'lowStockProducts'  => $lowStockProducts,
+            'totalValue'        => $totalValue,
+            'stockMovements'    => $stockMovements,
+            'salesHistory'      => $periodSales['history'],
+            'periodTotal'       => $periodSales['total'],
+            'periodCount'       => $periodSales['count'],
+            'monthlySales'      => $monthlySales,
+            'stockAlerts'       => $stockAlerts,
+            'todaySales'        => (float) $todaySales,
+            'monthSales'        => (float) $monthSales,
+            'topProducts'       => $topProducts,
+            'depenses_periode'  => $beneficePeriode['total_depenses'],
+            'benefice_periode'  => $beneficePeriode['benefice'],
+            'depenses_history'  => $beneficePeriode['history'],
+            'period' => [
+                'type'       => $period,
+                'start_date' => $startDate->format('Y-m-d'),
+                'end_date'   => $endDate->format('Y-m-d'),
+                'label'      => $this->getPeriodLabel($period, $startDate, $endDate),
+            ],
+        ];
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -160,8 +180,8 @@ class DashboardController extends Controller
 
         // Remplir tous les jours de la plage avec 0 si aucune dépense
         $history  = [];
-        $cursor   = \Carbon\Carbon::parse($debut);
-        $dateFin  = \Carbon\Carbon::parse($fin);
+        $cursor   = Carbon::parse($debut);
+        $dateFin  = Carbon::parse($fin);
 
         while ($cursor->lte($dateFin)) {
             $dateStr   = $cursor->format('Y-m-d');
@@ -193,30 +213,30 @@ class DashboardController extends Controller
                     $now->copy()->subDays(6)->startOfDay(),
                     $now->copy()->endOfDay()
                 ];
-            
+
             case 'month':
                 return [
                     $now->copy()->startOfMonth(),
                     $now->copy()->endOfMonth()
                 ];
-            
+
             case 'last_month':
                 return [
                     $now->copy()->subMonth()->startOfMonth(),
                     $now->copy()->subMonth()->endOfMonth()
                 ];
-            
+
             case 'custom':
-                $startDate = $request->input('start_date') 
+                $startDate = $request->input('start_date')
                     ? Carbon::parse($request->input('start_date'))->startOfDay()
                     : $now->copy()->subDays(6)->startOfDay();
-                
+
                 $endDate = $request->input('end_date')
                     ? Carbon::parse($request->input('end_date'))->endOfDay()
                     : $now->copy()->endOfDay();
-                
+
                 return [$startDate, $endDate];
-            
+
             default:
                 return [
                     $now->copy()->subDays(6)->startOfDay(),
@@ -245,17 +265,17 @@ class DashboardController extends Controller
         // Créer un tableau complet de toutes les dates de la période
         $history = [];
         $currentDate = $startDate->copy();
-        
+
         while ($currentDate <= $endDate) {
             $dateStr = $currentDate->format('Y-m-d');
             $sale = $sales->firstWhere('date', $dateStr);
-            
+
             $history[] = [
                 'date' => $dateStr,
                 'amount' => $sale ? (float) $sale->amount : 0,
                 'count' => $sale ? (int) $sale->count : 0
             ];
-            
+
             $currentDate->addDay();
         }
         $history = array_reverse($history);
@@ -272,6 +292,9 @@ class DashboardController extends Controller
 
     /**
      * Récupère les ventes mensuelles (12 derniers mois)
+     *
+     * Note : DATE_FORMAT() est spécifique MySQL — assumé car le projet
+     * utilise MySQL en environnement de test et de production (cf. .env.testing).
      */
     private function getMonthlySales(int $ownerId, Carbon $now): array
     {
@@ -287,7 +310,7 @@ class DashboardController extends Controller
             ->orderBy('mois', 'desc')
             ->get();
 
-        return $monthlySales->map(function($sale) {
+        return $monthlySales->map(function ($sale) {
             return [
                 'mois' => $sale->mois,
                 'nombre_ventes' => (int) $sale->nombre_ventes,
@@ -315,7 +338,7 @@ class DashboardController extends Controller
             ->limit(5)
             ->get();
 
-        return $topProducts->map(function($product) {
+        return $topProducts->map(function ($product) {
             return [
                 'nom' => $product->nom_produit,
                 'quantite' => (int) $product->total_quantite,
