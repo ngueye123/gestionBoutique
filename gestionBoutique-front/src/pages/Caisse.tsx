@@ -1,41 +1,24 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  AlertTriangle, TrendingDown, TrendingUp,
-  Settings, RefreshCw, Download, ChevronRight,
-  Filter, X,
+  TrendingDown, TrendingUp, Settings, RefreshCw,
+  Download, ChevronRight, Filter, X, AlertTriangle,
+  Wallet, Users, ArrowDownLeft, ArrowUpRight, Clock,
+  CheckCircle, BarChart3, ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { BilanSection } from '../components/BilanSection';
 import { HistoriqueBilans } from '../components/HistoriqueBilans';
 import { useCaisse } from '../hooks/useCaisse';
+import type { MouvementData } from '../hooks/useCaisse';
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// ─── Types locaux ────────────────────────────────────────────────────────────
 
 interface StatutAlerte {
   pourcentage: number;
   niveau: 'info' | 'warning' | 'critique' | 'danger' | null;
   label: string;
   attention: boolean;
-}
-
-interface CaisseData {
-  id: number;
-  solde_actuel: number;
-  plafond: number;
-  est_bloquee: boolean;
-}
-
-interface MouvementData {
-  id: number;
-  type: 'apport' | 'prelevement' | 'remboursement_dette';
-  montant: number;
-  solde_avant: number;
-  solde_apres: number;
-  note: string | null;
-  ticket_reference: string | null;
-  caissier?: string;
-  created_at: string;
 }
 
 interface VueCaisse {
@@ -50,52 +33,78 @@ interface VueCaisse {
   est_bloquee: boolean;
 }
 
-// ─── Helpers UI ─────────────────────────────────────────────────────────────
+// ─── Constantes de couleurs ──────────────────────────────────────────────────
 
-const couleurNiveau = (niveau: StatutAlerte['niveau']) => {
-  switch (niveau) {
-    case 'danger':   return { barre: 'bg-red-600',    texte: 'text-red-700',    fond: 'bg-red-50',    bordure: 'border-red-300' };
-    case 'critique': return { barre: 'bg-orange-500', texte: 'text-orange-700', fond: 'bg-orange-50', bordure: 'border-orange-300' };
-    case 'warning':  return { barre: 'bg-yellow-500', texte: 'text-yellow-700', fond: 'bg-yellow-50', bordure: 'border-yellow-200' };
-    case 'info':     return { barre: 'bg-blue-400',   texte: 'text-blue-700',   fond: 'bg-blue-50',   bordure: 'border-blue-200' };
-    default:         return { barre: 'bg-green-500',  texte: 'text-green-700',  fond: 'bg-green-50',  bordure: 'border-green-200' };
-  }
-};
+const NIVEAU_CONFIG = {
+  danger:   { bg: 'bg-red-50',     border: 'border-red-200',    bar: 'bg-red-500',    text: 'text-red-700',    badge: 'bg-red-100 text-red-700',    icon: '🔴' },
+  critique: { bg: 'bg-orange-50',  border: 'border-orange-200', bar: 'bg-orange-500', text: 'text-orange-700', badge: 'bg-orange-100 text-orange-700', icon: '🟠' },
+  warning:  { bg: 'bg-amber-50',   border: 'border-amber-200',  bar: 'bg-amber-400',  text: 'text-amber-700',  badge: 'bg-amber-100 text-amber-700',  icon: '🟡' },
+  info:     { bg: 'bg-blue-50',    border: 'border-blue-200',   bar: 'bg-blue-400',   text: 'text-blue-700',   badge: 'bg-blue-100 text-blue-700',    icon: 'ℹ️' },
+  default:  { bg: 'bg-emerald-50', border: 'border-emerald-200',bar: 'bg-emerald-500',text: 'text-emerald-700',badge: 'bg-emerald-100 text-emerald-700',icon: '✅' },
+} as const;
 
-const labelType = (type: MouvementData['type']) => {
-  switch (type) {
-    case 'apport':              return { label: 'Apport',       couleur: 'text-blue-600', signe: '+' };
-    case 'remboursement_dette': return { label: 'Remb. dette',  couleur: 'text-teal-600', signe: '+' };
-    case 'prelevement':         return { label: 'Prélèvement',  couleur: 'text-red-600',  signe: '-' };
-    default:                    return { label: type,           couleur: 'text-gray-600', signe:  '' };
-  }
-};
+const MOUVEMENT_CONFIG = {
+  apport:              { label: 'Apport',        icon: ArrowUpRight,   color: 'text-emerald-600', bg: 'bg-emerald-50',  signe: '+' },
+  remboursement_dette: { label: 'Remb. dette',   icon: ArrowUpRight,   color: 'text-teal-600',    bg: 'bg-teal-50',     signe: '+' },
+  prelevement:         { label: 'Prélèvement',   icon: ArrowDownLeft,  color: 'text-red-500',     bg: 'bg-red-50',      signe: '−' },
+} as const;
 
-// ─── Jauge ───────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR') + ' F';
+
+const getNiveauConfig = (niveau: StatutAlerte['niveau']) =>
+  NIVEAU_CONFIG[niveau ?? 'default'] ?? NIVEAU_CONFIG.default;
+
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleString('fr-FR', {
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+  });
+
+// ─── Composant Jauge ─────────────────────────────────────────────────────────
 
 const Jauge = ({ pourcentage, niveau }: { pourcentage: number; niveau: StatutAlerte['niveau'] }) => {
-  const c   = couleurNiveau(niveau);
+  const cfg = getNiveauConfig(niveau);
   const pct = Math.min(pourcentage, 100);
   return (
-    <div className="w-full">
-      <div className="relative h-4 bg-gray-200 rounded-full overflow-visible">
-        <div className={`h-4 rounded-full transition-all duration-500 ${c.barre}`} style={{ width: `${pct}%` }} />
+    <div className="space-y-1.5">
+      <div className="relative h-2.5 bg-gray-100 rounded-full overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ease-out ${cfg.bar}`}
+          style={{ width: `${pct}%` }}
+        />
         {[70, 80, 90].map(s => (
-          <div key={s} className="absolute top-0 h-4 w-0.5 bg-white opacity-70" style={{ left: `${s}%` }} title={`${s}%`} />
+          <div
+            key={s}
+            className="absolute top-0 bottom-0 w-px bg-white/70"
+            style={{ left: `${s}%` }}
+          />
         ))}
       </div>
-      <div className="flex justify-between text-xs text-gray-400 mt-1 px-0.5">
-        <span>0</span>
-        <span className="text-blue-400">70%</span>
-        <span className="text-yellow-500">80%</span>
-        <span className="text-orange-500">90%</span>
-        <span className="text-red-600">100%</span>
+      <div className="flex justify-between text-[10px] text-gray-400 px-0.5">
+        <span>0%</span>
+        <span>70%</span>
+        <span>80%</span>
+        <span>90%</span>
+        <span className={cfg.text}>{pct}%</span>
       </div>
     </div>
   );
 };
 
-// ─── Composant principal ─────────────────────────────────────────────────────
+// ─── Composant carte stat ─────────────────────────────────────────────────────
+
+const StatCard = ({ label, value, sub, accent }: {
+  label: string; value: string; sub?: string; accent?: string;
+}) => (
+  <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
+    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">{label}</p>
+    <p className={`text-2xl font-bold ${accent ?? 'text-gray-900'}`}>{value}</p>
+    {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
+  </div>
+);
+
+// ─── Composant principal ──────────────────────────────────────────────────────
 
 export default function Caisse() {
   const {
@@ -110,26 +119,22 @@ export default function Caisse() {
   const [isPatron, setIsPatron]                     = useState(false);
   const [mouvementsEmployes, setMouvementsEmployes] = useState<MouvementData[]>([]);
   const [filtreHistorique, setFiltreHistorique]     = useState<'ma_caisse' | 'tous'>('ma_caisse');
-
-  // ✅ Filtres
-  const [showFiltres, setShowFiltres]       = useState(false);
-  const [filtreType, setFiltreType]         = useState('');
-  const [filtreEmploye, setFiltreEmploye]   = useState('');
-  const [filtreDateDebut, setFiltreDateDebut] = useState('');
-  const [filtreDateFin, setFiltreDateFin]     = useState('');
-
-  // Formulaire mouvement
-  const [typeMvt, setTypeMvt]       = useState<'apport' | 'prelevement'>('prelevement');
-  const [montantMvt, setMontantMvt] = useState('');
-  const [noteMvt, setNoteMvt]       = useState('');
-  const [loadingMvt, setLoadingMvt] = useState(false);
-
-  // Formulaire plafond
-  const [caisseSelectId, setCaisseSelectId]   = useState<number | null>(null);
-  const [nouveauPlafond, setNouveauPlafond]   = useState('');
-  const [appliquerTous, setAppliquerTous]     = useState(false);
-  const [loadingPlafond, setLoadingPlafond]   = useState(false);
-  const [showPlafondForm, setShowPlafondForm] = useState(false);
+  const [showFiltres, setShowFiltres]               = useState(false);
+  const [filtreType, setFiltreType]                 = useState('');
+  const [filtreEmploye, setFiltreEmploye]           = useState('');
+  const [filtreDateDebut, setFiltreDateDebut]       = useState('');
+  const [filtreDateFin, setFiltreDateFin]           = useState('');
+  const [typeMvt, setTypeMvt]                       = useState<'apport' | 'prelevement'>('prelevement');
+  const [montantMvt, setMontantMvt]                 = useState('');
+  const [noteMvt, setNoteMvt]                       = useState('');
+  const [loadingMvt, setLoadingMvt]                 = useState(false);
+  const [caisseSelectId, setCaisseSelectId]         = useState<number | null>(null);
+  const [nouveauPlafond, setNouveauPlafond]         = useState('');
+  const [appliquerTous, setAppliquerTous]           = useState(false);
+  const [loadingPlafond, setLoadingPlafond]         = useState(false);
+  const [showPlafondForm, setShowPlafondForm]       = useState(false);
+  const [showMouvForm, setShowMouvForm]             = useState(false);
+  const [showVueGlobale, setShowVueGlobale]         = useState(false);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -139,16 +144,22 @@ export default function Caisse() {
     setLoading(true);
     try {
       const data = await chargerMaCaisse();
+
+      // Correction : mouvements_employes peut aussi être paginé
       if (data?.mouvements_employes) {
-        setMouvementsEmployes(data.mouvements_employes);
+        const raw = data.mouvements_employes;
+        setMouvementsEmployes(
+          Array.isArray(raw) ? raw : (raw?.data ?? [])
+        );
       }
+
       const resToutes = await fetchWithAuth(`${API_URL}/caisse/toutes`);
       if (resToutes.ok) {
-        const dataToutes = await resToutes.json();
-        if (dataToutes.success) {
-          setToutes(dataToutes.caisses);
+        const dt = await resToutes.json();
+        if (dt.success) {
+          setToutes(dt.caisses);
           setIsPatron(true);
-          setNouveauPlafond(prev => prev || String(dataToutes.caisses[0]?.plafond || 500000));
+          setNouveauPlafond(prev => prev || String(dt.caisses[0]?.plafond || 500000));
         }
       }
     } catch {
@@ -160,58 +171,60 @@ export default function Caisse() {
 
   useEffect(() => { charger(); }, [charger]);
 
-  // Notification seuil
+  // Alerte seuil caisse
   useEffect(() => {
     if (!statut?.attention || !statut.niveau) return;
     const fn = ['danger', 'critique'].includes(statut.niveau) ? toast.error : toast.warning;
-    const msg: Record<string, string> = {
-      danger:   '⛔ Caisse à 100% — ventes espèces bloquées !',
+    const msgs: Record<string, string> = {
+      danger:   '⛔ Caisse pleine — ventes espèces bloquées !',
       critique: `🔴 Caisse à ${statut.pourcentage}% — prélèvement urgent`,
       warning:  `🟠 Caisse à ${statut.pourcentage}% du plafond`,
       info:     `🟡 Caisse à ${statut.pourcentage}% du plafond`,
     };
-    fn(msg[statut.niveau], { duration: statut.niveau === 'danger' ? 10000 : 6000 });
+    fn(msgs[statut.niveau], { duration: statut.niveau === 'danger' ? 10000 : 5000 });
   }, [statut?.niveau]);
 
-  // ── Filtrage ──────────────────────────────────────────────────────────────
+  // ── Filtrage mouvements ───────────────────────────────────────────────────
 
   const mouvementsBase: MouvementData[] = filtreHistorique === 'ma_caisse'
     ? mouvements
     : mouvementsEmployes;
 
-  // Liste d'employés uniques pour le select
   const employesUniques = useMemo(() => {
     const noms = mouvementsEmployes.map(m => m.caissier).filter((n): n is string => !!n);
     return [...new Set(noms)];
   }, [mouvementsEmployes]);
 
-  // Application des filtres côté client
   const mouvementsFiltres = useMemo(() => {
+    if (!Array.isArray(mouvementsBase)) return [];
     return mouvementsBase.filter(m => {
       if (filtreType && m.type !== filtreType) return false;
       if (filtreHistorique === 'tous' && filtreEmploye && m.caissier !== filtreEmploye) return false;
       if (filtreDateDebut) {
-        const debut = new Date(filtreDateDebut);
-        debut.setHours(0, 0, 0, 0);
-        if (new Date(m.created_at) < debut) return false;
+        const d = new Date(filtreDateDebut); d.setHours(0, 0, 0, 0);
+        if (new Date(m.created_at) < d) return false;
       }
       if (filtreDateFin) {
-        const fin = new Date(filtreDateFin);
-        fin.setHours(23, 59, 59, 999);
-        if (new Date(m.created_at) > fin) return false;
+        const d = new Date(filtreDateFin); d.setHours(23, 59, 59, 999);
+        if (new Date(m.created_at) > d) return false;
       }
       return true;
     });
   }, [mouvementsBase, filtreType, filtreEmploye, filtreHistorique, filtreDateDebut, filtreDateFin]);
 
   const nombreFiltresActifs = [filtreType, filtreEmploye, filtreDateDebut, filtreDateFin].filter(Boolean).length;
-
   const reinitialiserFiltres = () => {
-    setFiltreType('');
-    setFiltreEmploye('');
-    setFiltreDateDebut('');
-    setFiltreDateFin('');
+    setFiltreType(''); setFiltreEmploye('');
+    setFiltreDateDebut(''); setFiltreDateFin('');
   };
+
+  // Totaux historique visible
+  const totalEntrees = useMemo(() =>
+    mouvementsFiltres.filter(m => ['apport', 'remboursement_dette'].includes(m.type)).reduce((s, m) => s + m.montant, 0),
+    [mouvementsFiltres]);
+  const totalSorties = useMemo(() =>
+    mouvementsFiltres.filter(m => m.type === 'prelevement').reduce((s, m) => s + m.montant, 0),
+    [mouvementsFiltres]);
 
   // ── Mouvement ─────────────────────────────────────────────────────────────
 
@@ -221,9 +234,12 @@ export default function Caisse() {
     try {
       const data = await effectuerMouvement(typeMvt, parseFloat(montantMvt), noteMvt);
       if (data.success) {
-        toast.success(typeMvt === 'prelevement' ? 'Prélèvement effectué !' : 'Apport enregistré !');
-        setMontantMvt(''); setNoteMvt(''); charger();
-      } else { toast.error(data.message); }
+        toast.success(typeMvt === 'prelevement' ? '💸 Prélèvement effectué' : '💰 Apport enregistré');
+        setMontantMvt(''); setNoteMvt(''); setShowMouvForm(false);
+        charger();
+      } else {
+        toast.error(data.message);
+      }
     } catch { toast.error('Erreur réseau'); }
     finally  { setLoadingMvt(false); }
   };
@@ -243,8 +259,13 @@ export default function Caisse() {
         body: JSON.stringify({ plafond: parseFloat(nouveauPlafond) }),
       });
       const data = await res.json();
-      if (data.success) { toast.success(data.message || 'Plafond mis à jour !'); setShowPlafondForm(false); charger(); }
-      else toast.error(data.message);
+      if (data.success) {
+        toast.success('Plafond mis à jour');
+        setShowPlafondForm(false);
+        charger();
+      } else {
+        toast.error(data.message);
+      }
     } catch { toast.error('Erreur réseau'); }
     finally  { setLoadingPlafond(false); }
   };
@@ -253,164 +274,331 @@ export default function Caisse() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <RefreshCw className="w-8 h-8 animate-spin text-blue-500" />
+      <div className="flex items-center justify-center h-64 gap-3">
+        <RefreshCw className="w-5 h-5 animate-spin text-blue-500" />
+        <span className="text-sm text-gray-500">Chargement de la caisse…</span>
       </div>
     );
   }
 
-  const c = couleurNiveau(statut?.niveau ?? null);
+  const cfg = getNiveauConfig(statut?.niveau ?? null);
+  const pct = statut?.pourcentage ?? 0;
 
   return (
-    <div className="max-w-5xl mx-auto p-4 space-y-6">
+    <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
 
-      {/* ── Solde principal ───────────────────────────────────────────────── */}
+      {/* ══ HERO : Solde principal ══════════════════════════════════════════ */}
       {caisse && statut && (
-        <div className={`rounded-xl border-2 p-6 ${c.fond} ${c.bordure}`}>
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <p className="text-sm text-gray-500">Solde actuel</p>
-              <p className="text-4xl font-bold text-gray-900">
-                {caisse.solde_actuel.toLocaleString('fr-FR')}
-                <span className="text-xl text-gray-500 ml-1">F</span>
-              </p>
-              <p className="text-sm text-gray-500 mt-1">
-                Plafond : <span className="font-semibold">{caisse.plafond.toLocaleString('fr-FR')} F</span>
+        <div className={`rounded-2xl border-2 ${cfg.border} ${cfg.bg} p-6`}>
+
+          {/* Header */}
+          <div className="flex items-start justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${cfg.badge}`}>
+                <Wallet className="w-5 h-5" />
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Solde caisse</p>
+                <p className="text-3xl font-bold text-gray-900 leading-none mt-0.5">
+                  {fmt(caisse.solde_actuel)}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {statut.niveau && (
+                <span className={`text-xs font-semibold px-3 py-1.5 rounded-full ${cfg.badge}`}>
+                  {cfg.icon} {statut.label}
+                </span>
+              )}
+              <button
+                onClick={charger}
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/70 text-gray-400 hover:text-gray-700 hover:bg-white transition border border-gray-200"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Jauge */}
+          <Jauge pourcentage={pct} niveau={statut.niveau} />
+
+          {/* Stats rapides */}
+          <div className="grid grid-cols-2 gap-3 mt-5">
+            <div className="bg-white/70 rounded-xl p-3 border border-white">
+              <p className="text-xs text-gray-500 mb-0.5">Plafond</p>
+              <p className="text-lg font-bold text-gray-800">{fmt(caisse.plafond)}</p>
+            </div>
+            <div className="bg-white/70 rounded-xl p-3 border border-white">
+              <p className="text-xs text-gray-500 mb-0.5">Disponible</p>
+              <p className={`text-lg font-bold ${cfg.text}`}>
+                {fmt(Math.max(0, caisse.plafond - caisse.solde_actuel))}
               </p>
             </div>
-            <span className={`px-3 py-1 rounded-full text-sm font-semibold border ${c.fond} ${c.texte} ${c.bordure}`}>
-              {statut.label}
-            </span>
           </div>
-          <Jauge pourcentage={statut.pourcentage} niveau={statut.niveau} />
+
+          {/* Message d'alerte */}
           {statut.niveau && (
-            <div className={`mt-4 flex items-start gap-2 p-3 rounded-lg border ${c.bordure} ${c.fond}`}>
-              <AlertTriangle className={`w-5 h-5 mt-0.5 ${c.texte} flex-shrink-0`} />
-              <p className={`text-sm font-semibold ${c.texte}`}>
-                {statut.niveau === 'danger'   && '⛔ Plafond atteint — ventes espèces bloquées'}
-                {statut.niveau === 'critique' && `🔴 ${statut.pourcentage}% — prélèvement urgent`}
-                {statut.niveau === 'warning'  && `🟠 ${statut.pourcentage}% — pensez à prélever`}
-                {statut.niveau === 'info'     && `🟡 ${statut.pourcentage}% du plafond`}
+            <div className={`mt-4 flex items-center gap-2.5 p-3 rounded-xl border ${cfg.border} bg-white/50`}>
+              <AlertTriangle className={`w-4 h-4 flex-shrink-0 ${cfg.text}`} />
+              <p className={`text-sm font-medium ${cfg.text}`}>
+                {statut.niveau === 'danger'   && 'Plafond atteint — les ventes espèces sont bloquées.'}
+                {statut.niveau === 'critique' && `${pct}% du plafond atteint — effectuez un prélèvement.`}
+                {statut.niveau === 'warning'  && `${pct}% du plafond — pensez à prélever bientôt.`}
+                {statut.niveau === 'info'     && `${pct}% du plafond utilisé.`}
               </p>
             </div>
           )}
         </div>
       )}
 
-      {/* ── Vue globale patron ────────────────────────────────────────────── */}
-      {isPatron && toutes.length > 0 && (
-        <div className="bg-white rounded-xl border p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold">Vue globale des caisses</h2>
-            <button onClick={charger} className="text-gray-400 hover:text-gray-600"><RefreshCw className="w-4 h-4" /></button>
+      {/* ══ ACTIONS RAPIDES ═════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          onClick={() => { setTypeMvt('prelevement'); setShowMouvForm(true); }}
+          className="flex items-center justify-center gap-2 py-3 px-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-medium text-sm transition shadow-sm"
+        >
+          <TrendingDown className="w-4 h-4" />
+          Prélèvement
+        </button>
+        <button
+          onClick={() => { setTypeMvt('apport'); setShowMouvForm(true); }}
+          className="flex items-center justify-center gap-2 py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-medium text-sm transition shadow-sm"
+        >
+          <TrendingUp className="w-4 h-4" />
+          Apport
+        </button>
+      </div>
+
+      {/* ══ FORMULAIRE MOUVEMENT ════════════════════════════════════════════ */}
+      {showMouvForm && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          {/* Tabs */}
+          <div className="flex border-b border-gray-100">
+            {(['prelevement', 'apport'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => setTypeMvt(t)}
+                className={`flex-1 py-3 text-sm font-semibold transition ${
+                  typeMvt === t
+                    ? t === 'prelevement'
+                      ? 'bg-red-50 text-red-700 border-b-2 border-red-500'
+                      : 'bg-emerald-50 text-emerald-700 border-b-2 border-emerald-500'
+                    : 'text-gray-400 hover:text-gray-600'
+                }`}
+              >
+                {t === 'prelevement' ? '↓ Prélèvement' : '↑ Apport'}
+              </button>
+            ))}
           </div>
-          <div className="space-y-3">
-            {toutes.map(vc => {
-              const cv = couleurNiveau(vc.niveau);
-              return (
-                <div key={vc.id} className={`flex items-center gap-4 p-3 rounded-lg border ${cv.bordure} ${cv.fond}`}>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-semibold truncate">{vc.acteur}</span>
-                      <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{vc.role}</span>
-                      {vc.est_bloquee && <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">Bloquée</span>}
-                    </div>
-                    <Jauge pourcentage={vc.pourcentage} niveau={vc.niveau} />
-                  </div>
-                  <div className="text-right flex-shrink-0">
-                    <p className="font-bold text-sm">{vc.solde_actuel.toLocaleString('fr-FR')} F</p>
-                    <p className={`text-xs ${cv.texte}`}>{vc.pourcentage}%</p>
-                  </div>
-                  <button
-                    onClick={() => { setCaisseSelectId(vc.id); setNouveauPlafond(String(vc.plafond)); setAppliquerTous(false); setShowPlafondForm(true); }}
-                    className="p-1.5 hover:bg-white rounded-lg text-gray-400 hover:text-blue-600 transition"
-                    title="Modifier le plafond"
-                  >
-                    <Settings className="w-4 h-4" />
-                  </button>
+
+          <div className="p-5 space-y-4">
+            {/* Montant */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
+                Montant (F)
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={montantMvt}
+                onChange={e => setMontantMvt(e.target.value)}
+                placeholder="Ex: 50 000"
+                autoFocus
+                className="w-full text-2xl font-bold border-2 border-gray-200 rounded-xl px-4 py-3 focus:ring-0 focus:border-blue-400 outline-none transition"
+              />
+              {/* Aperçu solde après */}
+              {caisse && montantMvt && parseFloat(montantMvt) > 0 && (
+                <div className={`mt-2 flex items-center justify-between px-3 py-2 rounded-lg text-sm ${
+                  typeMvt === 'prelevement' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-700'
+                }`}>
+                  <span>Solde après</span>
+                  <span className="font-bold">
+                    {fmt(Math.max(0,
+                      typeMvt === 'prelevement'
+                        ? caisse.solde_actuel - parseFloat(montantMvt)
+                        : caisse.solde_actuel + parseFloat(montantMvt)
+                    ))}
+                  </span>
                 </div>
-              );
-            })}
+              )}
+            </div>
+
+            {/* Note */}
+            <div>
+              <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
+                Note <span className="text-gray-400 font-normal">(optionnel)</span>
+              </label>
+              <input
+                type="text"
+                value={noteMvt}
+                onChange={e => setNoteMvt(e.target.value)}
+                placeholder="Ex: Fond de caisse du matin"
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-0 focus:border-blue-400 outline-none transition"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex gap-2 pt-1">
+              <button
+                onClick={() => { setShowMouvForm(false); setMontantMvt(''); setNoteMvt(''); }}
+                className="flex-1 py-2.5 border-2 border-gray-200 rounded-xl text-sm text-gray-600 hover:bg-gray-50 transition font-medium"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleMouvement}
+                disabled={loadingMvt || !montantMvt || parseFloat(montantMvt) <= 0}
+                className={`flex-[2] py-2.5 rounded-xl text-sm text-white font-semibold transition disabled:opacity-50 disabled:cursor-not-allowed ${
+                  typeMvt === 'prelevement'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+              >
+                {loadingMvt ? 'Traitement…' : `Confirmer le ${typeMvt}`}
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ── Plafond (patron) ──────────────────────────────────────────────── */}
-      {isPatron && (
-        <div className="bg-white rounded-xl border p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-bold flex items-center gap-2">
-              <Settings className="w-5 h-5 text-blue-600" />Gestion du plafond
-            </h2>
-            <button onClick={() => setShowPlafondForm(!showPlafondForm)} className="text-sm text-blue-600 hover:underline flex items-center gap-1">
-              {showPlafondForm ? 'Réduire' : 'Modifier'}
-              <ChevronRight className={`w-4 h-4 transition-transform ${showPlafondForm ? 'rotate-90' : ''}`} />
-            </button>
-          </div>
-          {showPlafondForm && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nouveau plafond (F)</label>
-                <input type="number" min="1000" step="1000" value={nouveauPlafond}
-                  onChange={e => setNouveauPlafond(e.target.value)}
-                  className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500" placeholder="Ex: 500000" />
+      {/* ══ VUE GLOBALE PATRON ══════════════════════════════════════════════ */}
+      {isPatron && toutes.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <button
+            onClick={() => setShowVueGlobale(!showVueGlobale)}
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center">
+                <Users className="w-4 h-4 text-blue-600" />
               </div>
+              <span className="font-semibold text-gray-900">Vue globale des caisses</span>
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">
+                {toutes.length}
+              </span>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showVueGlobale ? 'rotate-180' : ''}`} />
+          </button>
+
+          {showVueGlobale && (
+            <div className="px-5 pb-5 space-y-3 border-t border-gray-50">
+              {toutes.map(vc => {
+                const vcCfg = getNiveauConfig(vc.niveau);
+                return (
+                  <div
+                    key={vc.id}
+                    className={`flex items-center gap-4 p-4 rounded-xl border ${vcCfg.border} ${vcCfg.bg} mt-3`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="font-semibold text-gray-900 text-sm truncate">{vc.acteur}</span>
+                        <span className="text-xs text-gray-400 bg-white px-2 py-0.5 rounded-full border border-gray-100">
+                          {vc.role}
+                        </span>
+                        {vc.est_bloquee && (
+                          <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded-full">
+                            Bloquée
+                          </span>
+                        )}
+                      </div>
+                      <Jauge pourcentage={vc.pourcentage} niveau={vc.niveau} />
+                    </div>
+                    <div className="text-right flex-shrink-0 space-y-1">
+                      <p className="font-bold text-sm text-gray-900">{fmt(vc.solde_actuel)}</p>
+                      <p className={`text-xs font-medium ${vcCfg.text}`}>{vc.pourcentage}%</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setCaisseSelectId(vc.id);
+                        setNouveauPlafond(String(vc.plafond));
+                        setAppliquerTous(false);
+                        setShowPlafondForm(true);
+                      }}
+                      className="w-8 h-8 flex-shrink-0 flex items-center justify-center rounded-lg bg-white/80 hover:bg-white text-gray-400 hover:text-blue-600 border border-gray-200 transition"
+                      title="Modifier le plafond"
+                    >
+                      <Settings className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ══ GESTION DU PLAFOND ══════════════════════════════════════════════ */}
+      {isPatron && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <button
+            onClick={() => setShowPlafondForm(!showPlafondForm)}
+            className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                <Settings className="w-4 h-4 text-gray-600" />
+              </div>
+              <span className="font-semibold text-gray-900">Gestion du plafond</span>
+            </div>
+            <ChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${showPlafondForm ? 'rotate-90' : ''}`} />
+          </button>
+
+          {showPlafondForm && (
+            <div className="px-5 pb-5 space-y-4 border-t border-gray-50 pt-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
+                  Nouveau plafond (F)
+                </label>
+                <input
+                  type="number"
+                  min="1000"
+                  step="10000"
+                  value={nouveauPlafond}
+                  onChange={e => setNouveauPlafond(e.target.value)}
+                  className="w-full text-xl font-bold border-2 border-gray-200 rounded-xl px-4 py-3 focus:ring-0 focus:border-blue-400 outline-none transition"
+                  placeholder="Ex: 500 000"
+                />
+              </div>
+
               {toutes.length > 1 && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Appliquer à</label>
+                  <label className="block text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1.5">
+                    Appliquer à
+                  </label>
                   <select
                     value={appliquerTous ? 'tous' : String(caisseSelectId ?? '')}
-                    onChange={e => { if (e.target.value === 'tous') { setAppliquerTous(true); setCaisseSelectId(null); } else { setAppliquerTous(false); setCaisseSelectId(parseInt(e.target.value)); }}}
-                    className="w-full border rounded-lg p-2"
+                    onChange={e => {
+                      if (e.target.value === 'tous') { setAppliquerTous(true); setCaisseSelectId(null); }
+                      else { setAppliquerTous(false); setCaisseSelectId(parseInt(e.target.value)); }
+                    }}
+                    className="w-full border-2 border-gray-200 rounded-xl px-4 py-2.5 text-sm focus:ring-0 focus:border-blue-400 outline-none"
                   >
                     <option value="tous">Toutes les caisses</option>
-                    {toutes.map(vc => <option key={vc.id} value={vc.id}>{vc.acteur} (actuel: {vc.plafond.toLocaleString('fr-FR')} F)</option>)}
+                    {toutes.map(vc => (
+                      <option key={vc.id} value={vc.id}>
+                        {vc.acteur} (actuel : {fmt(vc.plafond)})
+                      </option>
+                    ))}
                   </select>
                 </div>
               )}
-              <button onClick={handleModifierPlafond} disabled={loadingPlafond}
-                className="w-full py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">
-                {loadingPlafond ? 'Mise à jour...' : 'Appliquer le plafond'}
+
+              <button
+                onClick={handleModifierPlafond}
+                disabled={loadingPlafond}
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition disabled:opacity-50"
+              >
+                {loadingPlafond ? 'Mise à jour…' : 'Appliquer le plafond'}
               </button>
             </div>
           )}
         </div>
       )}
 
-      {/* ── Mouvement ─────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border p-5 shadow-sm">
-        <h2 className="text-lg font-bold mb-4">Mouvement de caisse</h2>
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <button onClick={() => setTypeMvt('prelevement')}
-              className={`flex-1 py-2 rounded-lg font-medium border transition ${typeMvt === 'prelevement' ? 'bg-red-600 text-white border-red-600' : 'bg-white text-gray-600 border-gray-300 hover:border-red-400'}`}>
-              <TrendingDown className="w-4 h-4 inline mr-1" />Prélèvement
-            </button>
-            <button onClick={() => setTypeMvt('apport')}
-              className={`flex-1 py-2 rounded-lg font-medium border transition ${typeMvt === 'apport' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-600 border-gray-300 hover:border-green-400'}`}>
-              <TrendingUp className="w-4 h-4 inline mr-1" />Apport
-            </button>
-          </div>
-          <input type="number" min="1" value={montantMvt} onChange={e => setMontantMvt(e.target.value)}
-            placeholder="Montant en F" className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500" />
-          <input type="text" value={noteMvt} onChange={e => setNoteMvt(e.target.value)}
-            placeholder="Note (optionnel)" className="w-full border rounded-lg p-2" />
-          {typeMvt === 'prelevement' && caisse && montantMvt && (
-            <p className="text-sm text-gray-500 bg-gray-50 p-2 rounded">
-              Solde après : <span className="font-semibold">{Math.max(0, caisse.solde_actuel - parseFloat(montantMvt || '0')).toLocaleString('fr-FR')} F</span>
-            </p>
-          )}
-          <button onClick={handleMouvement} disabled={loadingMvt}
-            className={`w-full py-2 rounded-lg text-white font-medium disabled:opacity-50 ${typeMvt === 'prelevement' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}>
-            {loadingMvt ? 'Traitement...' : `Confirmer le ${typeMvt}`}
-          </button>
-        </div>
-      </div>
-
-      {/* ── Bilan ─────────────────────────────────────────────────────────── */}
+      {/* ══ BILAN ════════════════════════════════════════════════════════════ */}
       <BilanSection calculerBilan={calculerBilan} telechargerTicketBilan={telechargerTicketBilan} />
 
-      {/* ── Historique bilans (patron) ────────────────────────────────────── */}
+      {/* ══ HISTORIQUE BILANS (patron) ════════════════════════════════════════ */}
       {isPatron && (
         <HistoriqueBilans
           chargerHistoriqueBilans={chargerHistoriqueBilans}
@@ -419,63 +607,73 @@ export default function Caisse() {
         />
       )}
 
-      {/* ── Historique mouvements ─────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
+      {/* ══ HISTORIQUE MOUVEMENTS ════════════════════════════════════════════ */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
 
-        {/* Header */}
-        <div className="px-5 py-4 border-b bg-gray-50">
+        {/* Header historique */}
+        <div className="px-5 py-4 border-b border-gray-50">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-bold">Historique des mouvements</h2>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
+                <BarChart3 className="w-4 h-4 text-gray-600" />
+              </div>
+              <span className="font-semibold text-gray-900">Historique</span>
+              <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                {mouvementsFiltres.length}
+              </span>
+            </div>
             <div className="flex items-center gap-2">
-              {/* Bouton filtres */}
               <button
                 onClick={() => setShowFiltres(!showFiltres)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border transition-colors ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg border font-medium transition ${
                   showFiltres || nombreFiltresActifs > 0
                     ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
                 }`}
               >
                 <Filter className="w-3 h-3" />
                 Filtres
                 {nombreFiltresActifs > 0 && (
-                  <span className="bg-white text-blue-600 rounded-full w-4 h-4 flex items-center justify-center text-xs font-bold">
+                  <span className="bg-white text-blue-600 rounded-full w-4 h-4 flex items-center justify-center font-bold">
                     {nombreFiltresActifs}
                   </span>
                 )}
               </button>
-              {/* Bouton effacer filtres */}
               {nombreFiltresActifs > 0 && (
                 <button
                   onClick={reinitialiserFiltres}
-                  className="flex items-center gap-1 px-2 py-1.5 text-xs text-red-600 hover:bg-red-50 rounded-lg border border-red-200 transition"
+                  className="flex items-center gap-1 px-2 py-1.5 text-xs text-red-500 hover:bg-red-50 rounded-lg border border-red-200 transition"
                 >
-                  <X className="w-3 h-3" />Effacer
+                  <X className="w-3 h-3" /> Effacer
                 </button>
               )}
             </div>
           </div>
 
-          {/* Onglets Ma caisse / Tous les employés */}
+          {/* Onglets Ma caisse / Tous */}
           {isPatron && (
-            <div className="flex gap-1 bg-gray-200 rounded-lg p-1 w-fit">
+            <div className="flex gap-1 bg-gray-100 rounded-xl p-1 w-fit">
               <button
                 onClick={() => { setFiltreHistorique('ma_caisse'); setFiltreEmploye(''); }}
-                className={`px-3 py-1 text-xs rounded-md font-medium transition ${
-                  filtreHistorique === 'ma_caisse' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                className={`px-4 py-1.5 text-xs rounded-lg font-medium transition ${
+                  filtreHistorique === 'ma_caisse'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 Ma caisse
               </button>
               <button
                 onClick={() => setFiltreHistorique('tous')}
-                className={`px-3 py-1 text-xs rounded-md font-medium transition flex items-center gap-1 ${
-                  filtreHistorique === 'tous' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                className={`px-4 py-1.5 text-xs rounded-lg font-medium transition flex items-center gap-1.5 ${
+                  filtreHistorique === 'tous'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
                 }`}
               >
                 Tous les employés
                 {mouvementsEmployes.length > 0 && (
-                  <span className="bg-blue-100 text-blue-600 px-1.5 rounded-full text-xs">
+                  <span className="bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full text-xs">
                     {mouvementsEmployes.length}
                   </span>
                 )}
@@ -484,36 +682,33 @@ export default function Caisse() {
           )}
         </div>
 
-        {/* ✅ Panneau de filtres */}
+        {/* Panneau filtres */}
         {showFiltres && (
-          <div className="px-5 py-4 border-b bg-blue-50">
+          <div className="px-5 py-4 border-b border-gray-50 bg-gray-50">
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-
-              {/* Type */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Type</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Type</label>
                 <select
                   value={filtreType}
                   onChange={e => setFiltreType(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                 >
-                  <option value="">Tous les types</option>
+                  <option value="">Tous</option>
                   <option value="apport">Apport</option>
                   <option value="prelevement">Prélèvement</option>
                   <option value="remboursement_dette">Remb. dette</option>
                 </select>
               </div>
 
-              {/* Employé — uniquement en vue "tous" */}
               {filtreHistorique === 'tous' && isPatron && (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Employé</label>
+                  <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Employé</label>
                   <select
                     value={filtreEmploye}
                     onChange={e => setFiltreEmploye(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                   >
-                    <option value="">Tous les employés</option>
+                    <option value="">Tous</option>
                     {employesUniques.map(nom => (
                       <option key={nom} value={nom}>{nom}</option>
                     ))}
@@ -521,87 +716,111 @@ export default function Caisse() {
                 </div>
               )}
 
-              {/* Date début */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Du</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Du</label>
                 <input
-                  type="date" value={filtreDateDebut}
+                  type="date"
+                  value={filtreDateDebut}
                   onChange={e => setFiltreDateDebut(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
 
-              {/* Date fin */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1 uppercase tracking-wide">Au</label>
+                <label className="block text-xs font-semibold text-gray-500 uppercase mb-1.5">Au</label>
                 <input
-                  type="date" value={filtreDateFin}
+                  type="date"
+                  value={filtreDateFin}
                   onChange={e => setFiltreDateFin(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-xs bg-white focus:ring-2 focus:ring-blue-500 outline-none"
                 />
               </div>
             </div>
-
-            {/* Résumé */}
-            <p className="text-xs text-gray-500 mt-3">
-              <span className="font-semibold text-gray-700">{mouvementsFiltres.length}</span> mouvement(s) trouvé(s)
-              {nombreFiltresActifs > 0 && (
-                <button onClick={reinitialiserFiltres} className="ml-2 text-red-500 hover:underline">
-                  Effacer les filtres
-                </button>
-              )}
-            </p>
           </div>
         )}
 
-        {/* Liste */}
-        <div className="divide-y max-h-96 overflow-y-auto">
+        {/* Mini résumé entrées / sorties */}
+        {mouvementsFiltres.length > 0 && (
+          <div className="grid grid-cols-2 gap-px bg-gray-100 border-b border-gray-100">
+            <div className="bg-white px-5 py-3 flex items-center gap-2">
+              <ArrowUpRight className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+              <div>
+                <p className="text-xs text-gray-400">Entrées</p>
+                <p className="text-sm font-bold text-emerald-600">+{fmt(totalEntrees)}</p>
+              </div>
+            </div>
+            <div className="bg-white px-5 py-3 flex items-center gap-2">
+              <ArrowDownLeft className="w-4 h-4 text-red-500 flex-shrink-0" />
+              <div>
+                <p className="text-xs text-gray-400">Sorties</p>
+                <p className="text-sm font-bold text-red-500">−{fmt(totalSorties)}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Liste mouvements */}
+        <div className="divide-y divide-gray-50 max-h-[420px] overflow-y-auto">
           {mouvementsFiltres.length === 0 ? (
-            <div className="text-center py-10 text-gray-400">
-              <p className="text-sm">
-                {nombreFiltresActifs > 0
-                  ? 'Aucun mouvement ne correspond aux filtres'
-                  : filtreHistorique === 'tous'
-                    ? 'Aucun mouvement pour les employés'
-                    : 'Aucun mouvement'}
+            <div className="flex flex-col items-center justify-center py-14 text-gray-300 gap-3">
+              <Clock className="w-10 h-10" />
+              <p className="text-sm text-gray-400 font-medium">
+                {nombreFiltresActifs > 0 ? 'Aucun résultat pour ces filtres' : 'Aucun mouvement'}
               </p>
               {nombreFiltresActifs > 0 && (
-                <button onClick={reinitialiserFiltres} className="mt-2 text-xs text-blue-600 hover:underline">
+                <button onClick={reinitialiserFiltres} className="text-xs text-blue-500 hover:underline">
                   Effacer les filtres
                 </button>
               )}
             </div>
           ) : (
             mouvementsFiltres.map(m => {
-              const t = labelType(m.type);
+              const mcfg = MOUVEMENT_CONFIG[m.type] ?? {
+                label: m.type, icon: Clock, color: 'text-gray-600', bg: 'bg-gray-50', signe: '',
+              };
+              const Icon = mcfg.icon;
               return (
-                <div key={m.id} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
+                <div
+                  key={m.id}
+                  className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors"
+                >
+                  {/* Icône type */}
+                  <div className={`w-8 h-8 flex-shrink-0 rounded-lg flex items-center justify-center ${mcfg.bg}`}>
+                    <Icon className={`w-4 h-4 ${mcfg.color}`} />
+                  </div>
+
+                  {/* Détails */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-sm font-semibold ${t.couleur}`}>{t.label}</span>
+                      <span className={`text-sm font-semibold ${mcfg.color}`}>{mcfg.label}</span>
                       {filtreHistorique === 'tous' && m.caissier && (
-                        <span className="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 px-2 py-0.5 rounded-full font-medium">
+                        <span className="text-xs bg-indigo-50 text-indigo-600 border border-indigo-100 px-2 py-0.5 rounded-full font-medium">
                           {m.caissier}
                         </span>
                       )}
-                      {m.note && <span className="text-xs text-gray-400 truncate max-w-36">{m.note}</span>}
+                      {m.note && (
+                        <span className="text-xs text-gray-400 truncate max-w-32">{m.note}</span>
+                      )}
                     </div>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      {new Date(m.created_at).toLocaleString('fr-FR')}
-                      {' · '}Après : {m.solde_apres.toLocaleString('fr-FR')} F
+                      {formatDate(m.created_at)}
+                      <span className="mx-1.5 text-gray-200">·</span>
+                      Solde après : <span className="font-medium text-gray-600">{fmt(m.solde_apres)}</span>
                     </p>
                   </div>
+
+                  {/* Montant + ticket */}
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <span className={`font-bold text-sm ${t.couleur}`}>
-                      {t.signe}{m.montant.toLocaleString('fr-FR')} F
+                    <span className={`text-sm font-bold tabular-nums ${mcfg.color}`}>
+                      {mcfg.signe}{fmt(m.montant)}
                     </span>
                     {m.ticket_reference && (
                       <button
                         onClick={() => telechargerTicket(m.id, m.ticket_reference!)}
                         title={`Ticket ${m.ticket_reference}`}
-                        className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-blue-600"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition"
                       >
-                        <Download className="w-4 h-4" />
+                        <Download className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
@@ -610,8 +829,21 @@ export default function Caisse() {
             })
           )}
         </div>
-      </div>
 
+        {/* Footer total */}
+        {mouvementsFiltres.length > 0 && (
+          <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
+            <span className="text-xs text-gray-400">
+              {mouvementsFiltres.length} mouvement{mouvementsFiltres.length > 1 ? 's' : ''}
+              {nombreFiltresActifs > 0 ? ' (filtré)' : ''}
+            </span>
+            <div className="flex items-center gap-1 text-xs text-emerald-600 font-semibold">
+              <CheckCircle className="w-3.5 h-3.5" />
+              Net : {fmt(totalEntrees - totalSorties)}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

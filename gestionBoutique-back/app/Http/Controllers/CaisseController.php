@@ -10,11 +10,14 @@ use App\Models\Utilisateur;
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
 use App\Services\CaisseService;
+use App\Services\ActorResolver;
+use App\Services\DashboardCacheService;
 use Illuminate\Support\Facades\DB;
 class CaisseController extends Controller
 {
      public function __construct(
         private readonly CaisseService $caisseService,
+        private readonly ActorResolver $actorResolver,
         private readonly DashboardCacheService $dashboardCache,
     ) {}
 
@@ -24,7 +27,7 @@ class CaisseController extends Controller
         
     public function maCaisse(Request $request)
     {
-        $actor  = $this->getActor();
+        $actor  = $this->actorResolver->resolve();
         $caisse = Caisse::pour($actor);
         $alerte = $caisse->statutAlerte();
 
@@ -126,7 +129,7 @@ class CaisseController extends Controller
     // ─────────────────────────────────────────────────────────────────────────
     public function ticket(Request $request, int $mouvementId)
     {
-        $actor  = $this->getActor();
+        $actor  = $this->actorResolver->resolve();
         $caisse = Caisse::pour($actor);
 
         $mouvement = MouvementCaisse::where('id', $mouvementId)
@@ -160,7 +163,7 @@ class CaisseController extends Controller
             'solde_reel' => 'required|numeric|min:0',
         ]);
 
-        $actor  = $this->getActor();
+        $actor  = $this->actorResolver->resolve();
         $caisse = Caisse::pour($actor);
 
         $bilan = $this->caisseService->calculerEtSauvegarderBilan(
@@ -183,7 +186,7 @@ class CaisseController extends Controller
     // ─────────────────────────────────────────────────────────────────────────
     public function ticketBilan(Request $request, int $bilanId)
     {
-        $actor = $this->getActor();
+        $actor = $this->actorResolver->resolve();
 
         $bilan = BilanCaisse::where('id', $bilanId)
             ->where('utilisateur_id', $this->utilisateurId($actor))
@@ -204,7 +207,7 @@ class CaisseController extends Controller
     // ─────────────────────────────────────────────────────────────────────────
     public function historiqueBilans(Request $request)
     {
-        $actor = $this->getActor();
+        $actor = $this->actorResolver->resolve();
 
         if (!$this->estPatronOuAdmin($actor)) {
             return response()->json(['success' => false, 'message' => 'Accès refusé.'], 403);
@@ -239,7 +242,7 @@ class CaisseController extends Controller
     // ─────────────────────────────────────────────────────────────────────────
     public function toutes(Request $request)
     {
-        $actor = $this->getActor();
+        $actor = $this->actorResolver->resolve();
 
         if (!$this->estPatronOuAdmin($actor)) {
             return response()->json(['success' => false, 'message' => 'Accès refusé.'], 403);
@@ -271,7 +274,7 @@ class CaisseController extends Controller
     // ─────────────────────────────────────────────────────────────────────────
     public function modifierPlafond(Request $request, int $id)
     {
-        $actor = $this->getActor();
+        $actor = $this->actorResolver->resolve();
 
         if (!$this->estPatronOuAdmin($actor)) {
             return response()->json(['success' => false, 'message' => 'Seul le patron peut modifier le plafond.'], 403);
@@ -303,7 +306,7 @@ class CaisseController extends Controller
     // ─────────────────────────────────────────────────────────────────────────
     public function modifierPlafondGlobal(Request $request)
     {
-        $actor = $this->getActor();
+        $actor = $this->actorResolver->resolve();
 
         if (!$this->estPatronOuAdmin($actor)) {
             return response()->json(['success' => false, 'message' => 'Accès refusé.'], 403);

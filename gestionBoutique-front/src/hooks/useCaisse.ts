@@ -27,6 +27,7 @@ export interface MouvementData {
   solde_apres: number;
   note: string | null;
   ticket_reference: string | null;
+  caissier?: string;
   created_at: string;
 }
 
@@ -48,8 +49,8 @@ export interface BilanData {
 }
 
 export interface BilanHistorique extends BilanData {
-   id: number;        // champ réel en base
-  bilan_id: number;  // alias ajouté par le controller
+  id: number;
+  bilan_id: number;
   date_debut: string;
   date_fin: string;
   effectue_par: string;
@@ -68,6 +69,17 @@ export interface BloquageInfo {
     montant_operation: number;
     a_prelever: number;
   };
+}
+
+// ─── Helper : normalise une réponse qui peut être un tableau OU un objet paginé Laravel ─
+// Avant la correction 6.2.2 : data.mouvements = MouvementData[]
+// Après paginate() : data.mouvements = { data: MouvementData[], meta: {...}, links: {...} }
+// Cette fonction accepte les deux formats et retourne toujours un tableau.
+function extractArray<T>(value: T[] | { data: T[] } | null | undefined): T[] {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'object' && 'data' in value && Array.isArray(value.data)) return value.data;
+  return [];
 }
 
 // ─── Hook ────────────────────────────────────────────────────────────────────
@@ -90,7 +102,8 @@ export function useCaisse() {
       if (data.success) {
         setCaisse(data.caisse);
         setStatut(data.statut);
-        setMouvements(data.mouvements);
+        // Correction bug : data.mouvements peut être un objet paginé ou un tableau simple
+        setMouvements(extractArray<MouvementData>(data.mouvements));
       }
       return data;
     } catch (e) {
@@ -134,21 +147,17 @@ export function useCaisse() {
     URL.revokeObjectURL(url);
   }, []);
 
-  // ── Calculer bilan (POST — solde_reel obligatoire) ────────────────────────
+  // ── Calculer bilan ────────────────────────────────────────────────────────
 
   const calculerBilan = useCallback(async (
     startDate: string,
     endDate: string,
     soldeReel: number
   ): Promise<{ success: boolean; bilans?: BilanData[]; message?: string }> => {
-    const res  = await fetchWithAuth(`${API_URL}/caisse/bilan`, {
+    const res = await fetchWithAuth(`${API_URL}/caisse/bilan`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        start_date: startDate,
-        end_date:   endDate,
-        solde_reel: soldeReel,
-      }),
+      body: JSON.stringify({ start_date: startDate, end_date: endDate, solde_reel: soldeReel }),
     });
     return res.json();
   }, []);
@@ -181,15 +190,12 @@ export function useCaisse() {
     if (filtres?.start_date)   params.set('start_date',   filtres.start_date);
     if (filtres?.end_date)     params.set('end_date',     filtres.end_date);
     if (filtres?.page)         params.set('page',         String(filtres.page));
-
-    const res  = await fetchWithAuth(`${API_URL}/caisse/bilans?${params}`);
+    const res = await fetchWithAuth(`${API_URL}/caisse/bilans?${params}`);
     return res.json();
   }, []);
 
   return {
-    // State
     caisse, statut, mouvements, loading, error,
-    // Actions
     chargerMaCaisse,
     effectuerMouvement,
     telechargerTicket,

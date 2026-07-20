@@ -15,6 +15,8 @@ use Illuminate\Support\Facades\Log;
 use App\Models\Caisse;
 use App\Models\MouvementCaisse;
 use App\Services\VenteService;
+use App\Services\DashboardCacheService;
+
 class VenteController extends Controller
 {
     use RoleHelper;
@@ -70,11 +72,15 @@ class VenteController extends Controller
             ], 201);
 
         } catch (\RuntimeException $e) {
-            // Erreurs métier avec code HTTP précis (404, 400...)
+            $code = (int) $e->getCode();
+
+            // Si le code n'est pas un code HTTP valide (ex: SQLSTATE casté donne 23000, ou 0), fallback à 400
+            $httpCode = ($code >= 100 && $code < 600) ? $code : 400;
+
             return response()->json([
                 'success' => false,
                 'message' => $e->getMessage(),
-            ], $e->getCode() ?: 400);
+            ], $httpCode);
         }
     }
 

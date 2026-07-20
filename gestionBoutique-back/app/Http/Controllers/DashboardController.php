@@ -9,6 +9,7 @@ use Illuminate\Http\JsonResponse;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use App\Services\DashboardCacheService;
 
 class DashboardController extends Controller
 {
