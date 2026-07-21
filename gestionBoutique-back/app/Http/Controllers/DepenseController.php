@@ -10,9 +10,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use App\Services\DashboardCacheService;
 
 class DepenseController extends Controller
 {
+     public function __construct(
+        private DashboardCacheService $dashboardCache
+    ) {}
     // ─────────────────────────────────────────────────────────────────────────
     // Résout l'acteur connecté — identique à CaisseController::getActor()
     // ─────────────────────────────────────────────────────────────────────────
@@ -208,7 +212,7 @@ class DepenseController extends Controller
                 'categorie'      => $validated['categorie'] ?? 'autre',
             ]);
              
-            $this->dashboardCache->invalidate($ownerId);
+            $this->dashboardCache->invalidate($patron->id);
 
             return response()->json([
                 'success'  => true,
@@ -250,7 +254,7 @@ class DepenseController extends Controller
                 'categorie'    => $validated['categorie'] ?? $depense->categorie,
             ]);
 
-            $this->dashboardCache->invalidate($ownerId);
+            $this->dashboardCache->invalidate($patron->id);
 
             return response()->json([
                 'success' => true,
@@ -278,7 +282,7 @@ class DepenseController extends Controller
         $depense = Depense::byUtilisateur($patron->id)->findOrFail($id);
         $depense->delete();
 
-        $this->dashboardCache->invalidate($ownerId);
+        $this->dashboardCache->invalidate($patron->id);
         return response()->json([
             'success' => true,
             'message' => 'Dépense supprimée.',
