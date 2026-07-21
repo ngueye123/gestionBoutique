@@ -72,7 +72,7 @@ trait RoleHelper
      */
     protected function canManageProducts()
     {
-        return $this->isPatron() || $this->isEmployeAdmin();
+        return $this->isPatron() || $this->isEmployeAdmin() || $this->isEmployeVendeur();
     }
 
     /**

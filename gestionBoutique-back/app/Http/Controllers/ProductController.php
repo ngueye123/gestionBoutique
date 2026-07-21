@@ -56,7 +56,7 @@ class ProductController extends Controller
         }
 
         if (!$this->canManageProducts()) {
-            return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent ajouter des produits');
+            return $this->accessDeniedResponse('Seuls les patrons et employés admin ou vendeur peuvent ajouter des produits');
         }
 
         $validated = $request->validate([
@@ -104,7 +104,7 @@ class ProductController extends Controller
         }
 
         if (!$this->canManageProducts()) {
-            return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent modifier des produits');
+            return $this->accessDeniedResponse('Seuls les patrons et employés admin ou vendeur peuvent modifier des produits');
         }
 
         $ownerId = $this->getOwnerId();
@@ -194,7 +194,7 @@ class ProductController extends Controller
         }
 
         if (!$this->canManageProducts()) {
-            return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent supprimer des produits');
+            return $this->accessDeniedResponse('Seuls les patrons et employés admin ou vendeur peuvent supprimer des produits');
         }
 
         $ownerId = $this->getOwnerId();
