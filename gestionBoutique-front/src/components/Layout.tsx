@@ -4,6 +4,9 @@ import { LayoutDashboard, Package, ShoppingCart, Users, LogOut, User, UserCircle
 import { useAuthStore } from '../store/authStore';
 import { EmployeUser } from '../types';
 import { Wallet } from 'lucide-react';
+import { ShieldCheck } from 'lucide-react';
+import { History } from 'lucide-react';
+
 //import { TrendingDown } from 'lucide-react';
 function Layout() {
   const navigate = useNavigate();
@@ -112,10 +115,17 @@ function Layout() {
             </Link>
           )}
 
+
+          {canViewDashboard() && (
+            <Link to="/ajustements-prix" className={linkClass('/ajustements-prix')}>
+              <History className="w-5 h-5 mr-2" />
+              Ajustements de prix
+            </Link>
+          )}
           
 
           {/* Dépenses */}
-          {canManageEmployees() && (
+          {canManageProducts() && (
             <Link to="/depenses" className={linkClass('/depenses')}>
               <TrendingDown className="w-5 h-5 mr-2" />
               Dépenses
@@ -131,9 +141,13 @@ function Layout() {
           )}
         </nav>
 
-       {/* <div className="absolute bottom-16 left-4 right-4">
-          <CaisseIndicateur />
-        </div> */}
+
+        {canManageEmployees() && (
+          <Link to="/securite" className={linkClass('/securite')}>
+            <ShieldCheck className="w-5 h-5 mr-2" />
+            Sécurité
+          </Link>
+        )}
 
 
         {/* Bouton de déconnexion */}

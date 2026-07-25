@@ -8,8 +8,14 @@ use App\Models\Product;
 use App\Models\Client;
 use App\Models\Caisse;
 use App\Models\Employe;
+use App\Models\SecuritySetting;
+use App\Models\PriceOverride;
+use App\Models\Utilisateur;
+use App\Notifications\PriceOverrideNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
+
 
 class VenteService
 {
@@ -66,12 +72,25 @@ class VenteService
                     );
                 }
 
-                $sousTotal    = $product->price * $item['quantity'];
+                // --- Surcharge de prix ---
+                $prixNormal = $product->price;
+                $prixFinal  = $item['prix_override'] ?? $prixNormal;
+                $isOverride = bccomp((string) $prixFinal, (string) $prixNormal, 2) !== 0;
+
+                if ($isOverride) {
+                    $this->autoriserOverride($actor, $item['pin'] ?? null);
+                }
+
+                $sousTotal    = $prixFinal * $item['quantity'];
                 $total       += $sousTotal;
                 $venteItems[] = [
-                    'product'    => $product,
-                    'quantity'   => $item['quantity'],
-                    'sous_total' => $sousTotal,
+                    'product'       => $product,
+                    'quantity'      => $item['quantity'],
+                    'sous_total'    => $sousTotal,
+                    'prix_normal'   => $prixNormal,
+                    'prix_final'    => $prixFinal,
+                    'is_override'   => $isOverride,
+                    'justification' => $item['justification'] ?? null,
                 ];
             }
 
@@ -98,15 +117,39 @@ class VenteService
             foreach ($venteItems as $venteItem) {
                 $product = $venteItem['product'];
 
-                VenteDetail::create([
+                $venteDetail = VenteDetail::create([
                     'vente_id'          => $vente->id,
                     'product_id'        => $product->id,
                     'reference_produit' => $product->reference,
                     'nom_produit'       => $product->name,
                     'quantite'          => $venteItem['quantity'],
-                    'prix_unitaire'     => $product->price,
+                    'prix_unitaire'     => $venteItem['prix_final'],
                     'sous_total'        => $venteItem['sous_total'],
+                    'prix_original'     => $venteItem['is_override'] ? $venteItem['prix_normal'] : null,
+                    'prix_override'     => $venteItem['is_override'],
                 ]);
+
+                if ($venteItem['is_override']) {
+                    // Note: the `price_overrides` table defines an `employe_id` FK
+                    // constrained to `utilisateurs`. To match the migration, store
+                    // the owner utilisateur id in `employe_id` and avoid writing
+                    // a non-existent `utilisateur_id` column.
+                    $priceOverride = PriceOverride::create([
+                        'vente_id'        => $vente->id,
+                        'vente_detail_id' => $venteDetail->id,
+                        'product_id'      => $product->id,
+                        'employe_id'      => $employeId,
+                        'prix_normal'     => $venteItem['prix_normal'],
+                        'prix_applique'   => $venteItem['prix_final'],
+                        'justification'   => $venteItem['justification'],
+                        'pin_utilise'     => $actor instanceof Employe,
+                        'ip_address'      => request()->ip(),
+                    ]);
+
+                    // Envoi asynchrone (queue), ne bloque pas l'encaissement
+                    Notification::route('mail', Utilisateur::find($ownerId)->email)
+                        ->notify(new PriceOverrideNotification($priceOverride, $product, $actor));
+                }
 
                 $affected = Product::where('id', $product->id)
                     ->where('stock', '>=', $venteItem['quantity'])
@@ -156,6 +199,23 @@ class VenteService
             ]);
 
             throw $e;
+        }
+    }
+
+    /**
+     * Vérifie que l'acteur est autorisé à appliquer une surcharge de prix.
+     * Le patron (acteur non-Employe) est exempté de PIN.
+     *
+     * @throws \RuntimeException  Si le PIN est manquant ou invalide
+     */
+    private function autoriserOverride(mixed $actor, ?string $pin): void
+    {
+        if (!$actor instanceof Employe) {
+            return; // patron / propriétaire du compte : bypass
+        }
+
+        if (!$pin || !SecuritySetting::current()->verifyPin($pin)) {
+            throw new \RuntimeException('Code PIN invalide ou manquant pour la surcharge de prix', 403);
         }
     }
 }

@@ -14,6 +14,7 @@ use App\Services\DashboardCacheService;
 
 class DepenseController extends Controller
 {
+    use RoleHelper;
      public function __construct(
         private DashboardCacheService $dashboardCache
     ) {}
@@ -41,18 +42,25 @@ class DepenseController extends Controller
     }
 
     /**
-     * Vérifie que l'acteur est bien un patron (Utilisateur).
-     * Les employés — même admin — n'ont pas accès aux dépenses.
+     * Retourne l'utilisateur propriétaire (patron) associé à l'acteur connecté.
+     * Pour un employé admin, on remonte sur l'utilisateur patron via utilisateur_id.
      */
-    private function assertPatron(): Utilisateur
+    private function resolveOwner(): Utilisateur
     {
         $actor = $this->getActor();
 
-        if (!($actor instanceof Utilisateur)) {
-            abort(403, 'Accès réservé au patron.');
+        if ($actor instanceof Utilisateur) {
+            return $actor;
         }
 
-        return $actor;
+        if ($actor instanceof Employe && $actor->role === 'admin') {
+            $patron = Utilisateur::find($actor->utilisateur_id);
+            if ($patron) {
+                return $patron;
+            }
+        }
+
+        abort(403, 'Accès refusé aux dépenses.');
     }
 
     
@@ -67,7 +75,10 @@ class DepenseController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $patron = $this->assertPatron();
+        if (!$this->canManageDepenses()) {
+            return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent gérer les dépenses');
+        }
+        $patron = $this->resolveOwner();
 
         $request->validate([
             'start_date' => 'nullable|date',
@@ -194,7 +205,10 @@ class DepenseController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $patron = $this->assertPatron();
+        $patron = $this->resolveOwner();
+        if (!$this->canManageDepenses()) {
+            return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent gérer les dépenses');
+        }
 
         try {
             $validated = $request->validate([
@@ -235,7 +249,11 @@ class DepenseController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
-        $patron = $this->assertPatron();
+        $patron = $this->resolveOwner();
+
+        if (!$this->canManageDepenses()) {
+            return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent gérer les dépenses');
+        }
 
         try {
             $depense = Depense::byUtilisateur($patron->id)->findOrFail($id);
@@ -277,7 +295,11 @@ class DepenseController extends Controller
 
     public function destroy(int $id): JsonResponse
     {
-        $patron = $this->assertPatron();
+        $patron = $this->resolveOwner();
+
+        if (!$this->canManageDepenses()) {
+            return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent gérer les dépenses');
+        }
 
         $depense = Depense::byUtilisateur($patron->id)->findOrFail($id);
         $depense->delete();
@@ -296,7 +318,10 @@ class DepenseController extends Controller
 
     public function statsAnnuelles(Request $request): JsonResponse
     {
-        $patron = $this->assertPatron();
+        $patron = $this->resolveOwner();
+        if (!$this->canManageDepenses()) {
+            return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent gérer les dépenses');
+        }
 
         $annee = (int) ($request->input('annee', now()->year));
 

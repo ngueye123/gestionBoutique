@@ -8,6 +8,8 @@ use App\Models\Product;
 use App\Models\Client;
 use App\Models\Employe;
 use App\Models\Utilisateur;
+use APP\Models\SecuritySetting;
+use App\Models\PriceOverride;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
@@ -48,15 +50,18 @@ class VenteController extends Controller
      * Enregistrer une nouvelle vente (avec support des dettes)
      * POST /api/ventes
      */
-   public function store(Request $request): JsonResponse
+    public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'items'            => 'required|array|min:1',
-            'items.*.id'       => 'required|integer|exists:products,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'moyen_paiement'   => 'required|in:especes,wave,orange_money,carte,dette',
-            'montant_recu'     => 'nullable|numeric|min:0',
-            'client_id'        => 'required_if:moyen_paiement,dette|nullable|integer|exists:clients,id',
+            'items'                  => 'required|array|min:1',
+            'items.*.id'             => 'required|integer|exists:products,id',
+            'items.*.quantity'       => 'required|integer|min:1',
+            'items.*.prix_override'  => 'nullable|numeric|min:0',
+            'items.*.justification'  => 'nullable|string|max:255',
+            'items.*.pin'            => 'nullable|string|max:10',
+            'moyen_paiement'         => 'required|in:especes,wave,orange_money,carte,dette',
+            'montant_recu'           => 'nullable|numeric|min:0',
+            'client_id'              => 'required_if:moyen_paiement,dette|nullable|integer|exists:clients,id',
         ]);
 
         try {
@@ -73,8 +78,6 @@ class VenteController extends Controller
 
         } catch (\RuntimeException $e) {
             $code = (int) $e->getCode();
-
-            // Si le code n'est pas un code HTTP valide (ex: SQLSTATE casté donne 23000, ou 0), fallback à 400
             $httpCode = ($code >= 100 && $code < 600) ? $code : 400;
 
             return response()->json([
@@ -83,8 +86,7 @@ class VenteController extends Controller
             ], $httpCode);
         }
     }
-
-    /**
+        /**
      * Liste des ventes
      * GET /api/ventes?client_id=X&type=credit
      */

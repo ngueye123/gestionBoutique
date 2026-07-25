@@ -381,11 +381,17 @@ class CaisseController extends Controller
 
     private function estPatronOuAdmin($actor): bool
     {
-        // Un Employe n'est jamais patron (role 'vendeur' ou 'caissier')
         if ($actor instanceof Employe) {
-            return false;
+            return $actor->role === 'admin';
         }
-        // Un Utilisateur est toujours patron
+
+        if (method_exists($actor, 'getAttribute')) {
+            $role = $actor->getAttribute('role');
+            if ($role === 'admin') {
+                return true;
+            }
+        }
+
         return true;
     }
 

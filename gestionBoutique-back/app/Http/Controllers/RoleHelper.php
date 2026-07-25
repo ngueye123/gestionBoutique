@@ -75,6 +75,16 @@ trait RoleHelper
         return $this->isPatron() || $this->isEmployeAdmin() || $this->isEmployeVendeur();
     }
 
+    protected function canManageDepenses()
+    {
+        return $this->isPatron() || $this->isEmployeAdmin();
+    }
+
+    protected function canCreateCodePin()
+    {
+        return $this->isPatron() || $this->isEmployeAdmin();
+    }
+
     /**
      * Vérifie si l'utilisateur peut voir les produits
      */

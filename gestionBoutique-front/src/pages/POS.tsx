@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Search, ShoppingCart, Plus, Minus, X, User,
   CheckCircle, FileText, Trash2, CreditCard,
-  Smartphone, Banknote, Clock,
+  Smartphone, Banknote, Clock, Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Product, Client } from '../types';
@@ -14,6 +14,7 @@ import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { InvoiceButton } from '../components/InvoiceButton';
 import { InvoiceSearch } from '../components/InvoiceSearch';
 import { CaisseBloqueeModal } from '../components/CaisseBloqueeModal';
+import { PriceOverrideModal } from '../components/PriceOverrideModal';
 import type { BloquageInfo } from '../hooks/useCaisse';
 
 type PaymentMethod = 'especes' | 'wave' | 'orange_money' | 'carte' | 'dette';
@@ -61,12 +62,13 @@ export default function POS() {
   const [showSuccessModal, setShowSuccessModal]         = useState(false);
   const [showInvoiceSearchModal, setShowInvoiceSearchModal] = useState(false);
   const [bloquageCaisse, setBloquageCaisse]             = useState<BloquageInfo | null>(null);
+  const [overrideProduct, setOverrideProduct]           = useState<Product | null>(null);
 
   // Infos dernière vente
   const [lastSaleId, setLastSaleId]               = useState<number | null>(null);
   const [lastSaleReference, setLastSaleReference] = useState('');
 
-  const { items, addItem, removeItem, updateQuantity, total, clearCart } = useCartStore();
+  const { items, addItem, removeItem, updateQuantity, overridePrice, total, clearCart } = useCartStore();
   const { token } = useAuthStore();
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
   const receivedRef = useRef<HTMLInputElement>(null);
@@ -139,7 +141,13 @@ export default function POS() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          items: items.map(i => ({ id: parseInt(i.id), quantity: i.quantity })),
+          items: items.map(i => ({
+            id: parseInt(i.id),
+            quantity: i.quantity,
+            prix_override: i.isOverridden ? i.price : undefined,
+            justification: i.isOverridden ? i.justification : undefined,
+            pin: i.isOverridden ? i.pin : undefined,
+          })),
           moyen_paiement: paymentMethod,
           montant_recu: paymentMethod === 'especes' ? receivedAmount : total,
           client_id: paymentMethod === 'dette' && selectedClient ? selectedClient.id : null,
@@ -262,12 +270,20 @@ export default function POS() {
               const inCart   = items.find(i => i.id === String(product.id));
 
               return (
-                <button
+                <div
                   key={product.id}
+                  role="button"
+                  tabIndex={rupture ? -1 : 0}
                   onClick={() => !rupture && addItem(product)}
-                  disabled={rupture}
+                  onKeyDown={e => {
+                    if (!rupture && (e.key === 'Enter' || e.key === ' ')) {
+                      e.preventDefault();
+                      addItem(product);
+                    }
+                  }}
+                  aria-disabled={rupture}
                   className={`
-                    relative p-3 border rounded-xl text-left transition-all duration-100 group
+                    relative p-3 border rounded-xl text-left transition-all duration-100 group cursor-pointer
                     ${rupture
                       ? 'opacity-45 cursor-not-allowed bg-gray-50 border-gray-100'
                       : inCart
@@ -302,7 +318,21 @@ export default function POS() {
                   <p className={`text-xs mt-0.5 ${stockBas ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
                     Stock : {product.stock}{stockBas ? ' ⚠' : ''}
                   </p>
-                </button>
+
+                  {/* Bouton d'ajustement de prix, visible au survol */}
+                  {!rupture && (
+                    <button
+                      onClick={e => { e.stopPropagation(); setOverrideProduct(product); }}
+                      className="absolute bottom-2 right-2 flex items-center gap-1 px-2 py-1
+                                 bg-blue-50 text-blue-600 text-xs font-medium rounded-md
+                                 border border-blue-200 hover:bg-blue-100 hover:border-blue-300
+                                 opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      Ajuster
+                    </button>
+                  )}
+                </div>
               );
             })}
 
@@ -358,7 +388,14 @@ export default function POS() {
               <div key={item.id}
                    className="flex items-center gap-2 p-2.5 bg-gray-50 rounded-lg">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                  <p className="text-sm font-medium text-gray-900 truncate flex items-center gap-1.5">
+                    {item.name}
+                    {item.isOverridden && (
+                      <span className="text-[10px] bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded-full shrink-0">
+                        Prix modifié
+                      </span>
+                    )}
+                  </p>
                   <p className="text-xs text-gray-500">
                     {fmt(item.price)} × {item.quantity}{' '}
                     <span className="font-medium text-gray-700">
@@ -744,6 +781,21 @@ export default function POS() {
           bloquage={bloquageCaisse}
           onPrelevementFait={() => { setBloquageCaisse(null); setShowPaymentModal(true); }}
           onAnnuler={() => setBloquageCaisse(null)}
+        />
+      )}
+
+      {/* ══ Modal ajustement de prix ══════════════════════════════════════════ */}
+      {overrideProduct && (
+        <PriceOverrideModal
+          productName={overrideProduct.name}
+          currentPrice={overrideProduct.price}
+          onClose={() => setOverrideProduct(null)}
+          onConfirm={(newPrice, justification, pin) => {
+            const alreadyInCart = items.find(i => i.id === overrideProduct.id);
+            if (!alreadyInCart) addItem(overrideProduct);
+            overridePrice(overrideProduct.id, newPrice, justification, pin);
+            setOverrideProduct(null);
+          }}
         />
       )}
     </div>

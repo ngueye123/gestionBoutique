@@ -18,6 +18,9 @@ import ClientDetails from './pages/ClientDetails'
 import Caisse from './pages/Caisse'
 import Depenses from './pages/Depenses'
 import VerifyEmployeEmail from './pages/VerifyEmployeEmail';
+import SecuritySettings from './pages/SecuritySettings';
+ import PriceOverrides from './pages/PriceOverrides';
+
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore(state => state.token)
   const isAuthLoaded = useAuthStore(state => state.isAuthLoaded)
@@ -161,6 +164,24 @@ export default function App() {
             element={
               <RoleGuard requirePatron>
                 <Depenses />
+              </RoleGuard>
+            }
+          />
+
+          <Route
+            path="ajustements-prix"
+            element={
+              <RoleGuard requirePatron>
+                <PriceOverrides />
+              </RoleGuard>
+            }
+          />
+
+          <Route
+            path="securite"
+            element={
+              <RoleGuard requirePatron>
+                <SecuritySettings />
               </RoleGuard>
             }
           />

@@ -89,6 +89,14 @@ export interface VenteDetail {
   sous_total: number
 }
 
+export interface CartItem extends Product {
+  quantity: number;
+  originalPrice: number;   
+  isOverridden: boolean;
+  justification?: string;
+  pin?: string;             
+}
+
 // Type pour le formulaire de création de client
 export interface ClientFormData {
   nom: string
@@ -257,6 +265,22 @@ export interface EmployeFormData {
 }
 
 
+
+export interface PriceOverrideItem {
+  id: number;
+  vente_id: number;
+  product_id: number;
+  prix_normal: number;
+  prix_applique: number;
+  justification: string;
+  pin_utilise: boolean;
+  created_at: string;
+  product?: { id: number; name: string; reference: string };
+  employe?: { id: number; nom: string; role: string } | null;
+  vente?: { id: number; reference: string };
+}
+
+
 // ========== TYPES DÉPENSES ==========
 
 export interface Depense {
@@ -366,4 +390,7 @@ export interface DashboardStats {
   depenses_periode?: number
   benefice_periode?: number
   depenses_history?: Array<{ date: string; montant: number }>
+
+
+  
 }
