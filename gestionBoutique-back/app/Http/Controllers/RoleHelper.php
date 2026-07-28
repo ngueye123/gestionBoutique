@@ -77,7 +77,7 @@ trait RoleHelper
 
     protected function canManageDepenses()
     {
-        return $this->isPatron() || $this->isEmployeAdmin();
+        return $this->isPatron() || $this->isEmployeAdmin() || $this->isEmployeVendeur();
     }
 
     protected function canCreateCodePin()

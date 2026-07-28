@@ -63,9 +63,15 @@ class ProductController extends Controller
             'reference' => 'required|string',
             'name' => 'required|string',
             'price' => 'required|numeric|min:0',
-            'stock' => 'required|integer|min:0',
+            'stock' => 'required|numeric|min:0',
             'category' => 'required|string',
-            'min_stock' => 'nullable|integer|min:0',
+            'min_stock' => 'nullable|numeric|min:0',
+            'unit_type' => 'required|in:piece,masse,volume,longueur',
+            'unit_reference' => ['required', 'string', function ($attribute, $value, $fail) use ($request) {
+                if (!\App\Support\UnitConverter::isCompatible($request->input('unit_type'), $value)) {
+                    $fail("L'unité '$value' n'est pas compatible avec le type sélectionné.");
+                }
+            }],
         ]);
 
         $ownerId = $this->getOwnerId();
@@ -122,9 +128,15 @@ class ProductController extends Controller
         $validated = $request->validate([
             'name' => 'required|string',
             'price' => 'required|numeric|min:0',
-            'stock' => 'required|integer|min:0',
+            'stock' => 'required|numeric|min:0',
             'category' => 'required|string',
-            'min_stock' => 'nullable|integer|min:0'
+            'min_stock' => 'nullable|numeric|min:0',
+            'unit_type' => 'required|in:piece,masse,volume,longueur',
+            'unit_reference' => ['required', 'string', function ($attribute, $value, $fail) use ($request) {
+                if (!\App\Support\UnitConverter::isCompatible($request->input('unit_type'), $value)) {
+                    $fail("L'unité '$value' n'est pas compatible avec le type sélectionné.");
+                }
+            }],
         ]);
 
         $product->update($validated);
@@ -155,7 +167,7 @@ class ProductController extends Controller
         }
 
         $validated = $request->validate([
-            'quantity' => 'required|integer'
+            'quantity' => 'required|numeric'
         ]);
 
         $ownerId = $this->getOwnerId();

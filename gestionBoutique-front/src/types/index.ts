@@ -32,6 +32,8 @@ export interface Product {
   category: string
   min_stock: number
   utilisateur_id: number
+  unit_type: 'piece' | 'masse' | 'volume' | 'longueur'
+  unit_reference: string
 }
 
 export interface CartItem extends Product {
@@ -85,12 +87,16 @@ export interface VenteDetail {
   reference_produit: string
   nom_produit: string
   quantite: number
+  unite_vente: string
   prix_unitaire: number
+  unite_prix: string
   sous_total: number
 }
 
+
 export interface CartItem extends Product {
   quantity: number;
+  unite_vente: string;
   originalPrice: number;   
   isOverridden: boolean;
   justification?: string;

@@ -19,7 +19,9 @@ class Product extends Model
         'stock',
         'category',
         'min_stock',
-        'utilisateur_id'
+        'utilisateur_id',
+        'unit_type',
+        'unit_reference'
     ];
     protected $casts = [
         'reference' => 'string',

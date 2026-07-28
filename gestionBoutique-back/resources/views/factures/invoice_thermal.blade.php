@@ -228,7 +228,7 @@
             @foreach($vente->details as $detail)
                 <tr>
                     <td class="product-name">{{ $detail->nom_produit }}</td>
-                    <td class="product-qty-price">{{ $detail->quantite }}x{{ number_format($detail->prix_unitaire, 0, ',', ' ') }}F</td>
+                   <td class="product-qty-price">{{ rtrim(rtrim(number_format($detail->quantite, 3, ',', ' '), '0'), ',') }}{{ $detail->unite_vente }}x{{ number_format($detail->prix_unitaire, 0, ',', ' ') }}F/{{ $detail->unite_prix }}</td>
                     <td class="product-total">{{ number_format($detail->sous_total, 0, ',', ' ') }} F</td>
                 </tr>
             @endforeach

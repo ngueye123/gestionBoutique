@@ -11,6 +11,7 @@ use App\Models\Employe;
 use App\Models\SecuritySetting;
 use App\Models\PriceOverride;
 use App\Models\Utilisateur;
+use App\Support\UnitConverter;
 use App\Notifications\PriceOverrideNotification;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -65,9 +66,21 @@ class VenteService
                     throw new \RuntimeException("Produit introuvable : {$item['id']}", 404);
                 }
 
-                if ($product->stock < $item['quantity']) {
+                $uniteVente = $item['unite'] ?? $product->unit_reference;
+
+                if (!UnitConverter::isCompatible($product->unit_type, $uniteVente)) {
                     throw new \RuntimeException(
-                        "Stock insuffisant pour {$product->name}. Disponible : {$product->stock}",
+                        "Unité '{$uniteVente}' incompatible avec le produit {$product->name}",
+                        422
+                    );
+                }
+
+                $qtyBase = UnitConverter::toBase($product->unit_type, $uniteVente, (float) $item['quantity']);
+
+                if (bccomp((string) $product->stock, (string) $qtyBase, 3) < 0) {
+                    $uniteBase = UnitConverter::baseUnit($product->unit_type);
+                    throw new \RuntimeException(
+                        "Stock insuffisant pour {$product->name}. Disponible : {$product->stock} {$uniteBase}",
                         400
                     );
                 }
@@ -81,16 +94,19 @@ class VenteService
                     $this->autoriserOverride($actor, $item['pin'] ?? null);
                 }
 
-                $sousTotal    = $prixFinal * $item['quantity'];
+                $pricePerBase = UnitConverter::pricePerBase($product->unit_type, $product->unit_reference, $prixFinal);
+                $sousTotal    = round($pricePerBase * $qtyBase, 2);
                 $total       += $sousTotal;
                 $venteItems[] = [
-                    'product'       => $product,
-                    'quantity'      => $item['quantity'],
-                    'sous_total'    => $sousTotal,
-                    'prix_normal'   => $prixNormal,
-                    'prix_final'    => $prixFinal,
-                    'is_override'   => $isOverride,
-                    'justification' => $item['justification'] ?? null,
+                    'product'         => $product,
+                    'quantity'        => $item['quantity'],
+                    'unite_vente'     => $uniteVente,
+                    'quantite_base'   => $qtyBase,
+                    'sous_total'      => $sousTotal,
+                    'prix_normal'     => $prixNormal,
+                    'prix_final'      => $prixFinal,
+                    'is_override'     => $isOverride,
+                    'justification'   => $item['justification'] ?? null,
                 ];
             }
 
@@ -101,17 +117,19 @@ class VenteService
                 throw new \RuntimeException('Montant reçu insuffisant', 400);
             }
 
-            $vente = Vente::create([
-                'reference'      => Vente::generateReference(),
-                'utilisateur_id' => $ownerId,
-                'employe_id'     => $employeId,
-                'client_id'      => $clientId,
-                'total'          => $total,
-                'moyen_paiement' => $validated['moyen_paiement'],
-                'montant_recu'   => $validated['montant_recu'] ?? $total,
-                'monnaie'        => isset($validated['montant_recu'])
-                    ? $validated['montant_recu'] - $total
-                    : 0,
+           $venteDetail = VenteDetail::create([
+                'vente_id'          => $vente->id,
+                'product_id'        => $product->id,
+                'reference_produit' => $product->reference,
+                'nom_produit'       => $product->name,
+                'quantite'          => $venteItem['quantity'],
+                'unite_vente'       => $venteItem['unite_vente'],
+                'quantite_base'     => $venteItem['quantite_base'],
+                'prix_unitaire'     => $venteItem['prix_final'],
+                'unite_prix'        => $product->unit_reference,
+                'sous_total'        => $venteItem['sous_total'],
+                'prix_original'     => $venteItem['is_override'] ? $venteItem['prix_normal'] : null,
+                'prix_override'     => $venteItem['is_override'],
             ]);
 
             foreach ($venteItems as $venteItem) {
@@ -152,8 +170,8 @@ class VenteService
                 }
 
                 $affected = Product::where('id', $product->id)
-                    ->where('stock', '>=', $venteItem['quantity'])
-                    ->decrement('stock', $venteItem['quantity']);
+                    ->where('stock', '>=', $venteItem['quantite_base'])
+                    ->decrement('stock', $venteItem['quantite_base']);
 
                 if (!$affected) {
                     throw new \RuntimeException(

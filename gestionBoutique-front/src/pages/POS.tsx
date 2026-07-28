@@ -16,6 +16,7 @@ import { InvoiceSearch } from '../components/InvoiceSearch';
 import { CaisseBloqueeModal } from '../components/CaisseBloqueeModal';
 import { PriceOverrideModal } from '../components/PriceOverrideModal';
 import type { BloquageInfo } from '../hooks/useCaisse';
+import { UNIT_CONFIG, compatibleUnits, fromBase, lineSubtotal } from '../lib/unitConverter';
 
 type PaymentMethod = 'especes' | 'wave' | 'orange_money' | 'carte' | 'dette';
 
@@ -28,6 +29,9 @@ const getSoldeDette = (solde: any): number => {
   const parsed = parseFloat(String(solde || 0));
   return isNaN(parsed) ? 0 : parsed;
 };
+
+const formatQty = (n: number) => Number(n.toFixed(3)).toString();
+const unitLabel = (type: Product['unit_type'], unit: string) => UNIT_CONFIG[type].labels[unit] ?? unit;
 
 // ─── Config méthodes de paiement ──────────────────────────────────────────────
 
@@ -68,7 +72,7 @@ export default function POS() {
   const [lastSaleId, setLastSaleId]               = useState<number | null>(null);
   const [lastSaleReference, setLastSaleReference] = useState('');
 
-  const { items, addItem, removeItem, updateQuantity, overridePrice, total, clearCart } = useCartStore();
+  const { items, addItem, removeItem, updateQuantity, changeUnite, overridePrice, total, clearCart } = useCartStore();
   const { token } = useAuthStore();
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
   const receivedRef = useRef<HTMLInputElement>(null);
@@ -144,6 +148,7 @@ export default function POS() {
           items: items.map(i => ({
             id: parseInt(i.id),
             quantity: i.quantity,
+            unite: i.unite_vente,
             prix_override: i.isOverridden ? i.price : undefined,
             justification: i.isOverridden ? i.justification : undefined,
             pin: i.isOverridden ? i.pin : undefined,
@@ -268,6 +273,7 @@ export default function POS() {
               const rupture  = product.stock === 0;
               const stockBas = !rupture && product.stock <= product.min_stock;
               const inCart   = items.find(i => i.id === String(product.id));
+              const stockDisplay = formatQty(fromBase(product.unit_type, product.unit_reference, product.stock));
 
               return (
                 <div
@@ -294,9 +300,9 @@ export default function POS() {
                 >
                   {/* Badge quantité dans le panier */}
                   {inCart && (
-                    <span className="absolute top-2 right-2 w-5 h-5 bg-blue-600 text-white
+                    <span className="absolute top-2 right-2 min-w-5 h-5 px-1 bg-blue-600 text-white
                                      text-xs rounded-full flex items-center justify-center font-medium">
-                      {inCart.quantity}
+                      {formatQty(inCart.quantity)}
                     </span>
                   )}
 
@@ -314,9 +320,12 @@ export default function POS() {
                   <p className="text-xs text-gray-400 mt-0.5">{product.reference}</p>
                   <p className="text-base font-medium text-blue-700 mt-2">
                     {fmt(product.price)}
+                    <span className="text-xs text-gray-400 font-normal">
+                      /{unitLabel(product.unit_type, product.unit_reference)}
+                    </span>
                   </p>
                   <p className={`text-xs mt-0.5 ${stockBas ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
-                    Stock : {product.stock}{stockBas ? ' ⚠' : ''}
+                    Stock : {stockDisplay} {unitLabel(product.unit_type, product.unit_reference)}{stockBas ? ' ⚠' : ''}
                   </p>
 
                   {/* Bouton d'ajustement de prix, visible au survol */}
@@ -356,9 +365,9 @@ export default function POS() {
           <div className="flex items-center gap-2">
             <ShoppingCart className="w-5 h-5 text-gray-600" />
             <span className="font-medium text-gray-800 text-sm">Panier</span>
-            {nbArticles > 0 && (
+            {items.length > 0 && (
               <span className="bg-blue-600 text-white text-xs px-2 py-0.5 rounded-full font-medium">
-                {nbArticles}
+                {items.length}
               </span>
             )}
           </div>
@@ -397,64 +406,102 @@ export default function POS() {
                     )}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {fmt(item.price)} × {item.quantity}{' '}
+                    {fmt(item.price)}/{unitLabel(item.unit_type, item.unit_reference)} × {formatQty(item.quantity)} {unitLabel(item.unit_type, item.unite_vente)}{' '}
                     <span className="font-medium text-gray-700">
-                      = {fmt(item.price * item.quantity)}
+                      = {fmt(lineSubtotal(item))}
                     </span>
                   </p>
                 </div>
                <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => updateQuantity(item.id, Math.max(0, item.quantity - 1))}
-                  className="w-6 h-6 rounded-full border border-gray-300 flex items-center
-                            justify-center text-gray-500 hover:bg-gray-200 transition-colors"
-                >
-                  <Minus className="w-3 h-3" />
-                </button>
+                {item.unit_type === 'piece' ? (
+                  <>
+                    <button
+                      onClick={() => updateQuantity(item.id, Math.max(0, item.quantity - 1))}
+                      className="w-6 h-6 rounded-full border border-gray-300 flex items-center
+                                justify-center text-gray-500 hover:bg-gray-200 transition-colors"
+                    >
+                      <Minus className="w-3 h-3" />
+                    </button>
 
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  min={1}
-                  max={item.stock}
-                  value={item.quantity}
-                  onChange={e => {
-                    const raw = e.target.value;
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={1}
+                      max={item.stock}
+                      value={item.quantity}
+                      onChange={e => {
+                        const raw = e.target.value;
 
-                    // Permet de vider le champ temporairement pendant la saisie
-                    // sans forcer immédiatement une valeur (sinon impossible de retaper)
-                    if (raw === '') return;
+                        // Permet de vider le champ temporairement pendant la saisie
+                        // sans forcer immédiatement une valeur (sinon impossible de retaper)
+                        if (raw === '') return;
 
-                    const parsed = parseInt(raw, 10);
-                    if (isNaN(parsed)) return;
+                        const parsed = parseInt(raw, 10);
+                        if (isNaN(parsed)) return;
 
-                    // On clamp entre 1 et le stock disponible
-                    const clamped = Math.min(Math.max(parsed, 1), item.stock);
-                    updateQuantity(item.id, clamped);
-                  }}
-                  onBlur={e => {
-                    // Si l'utilisateur laisse le champ vide ou à 0 en sortant, on remet à 1
-                    const parsed = parseInt(e.target.value, 10);
-                    if (isNaN(parsed) || parsed < 1) {
-                      updateQuantity(item.id, 1);
-                    }
-                  }}
-                  onFocus={e => e.target.select()} // sélectionne tout le texte au focus, pratique pour retaper vite
-                  className="w-12 text-center text-sm font-medium border border-gray-200 rounded-md
-                            py-0.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none
-                            [&::-webkit-inner-spin-button]:appearance-none
-                            [&::-webkit-outer-spin-button]:appearance-none"
-                />
+                        // On clamp entre 1 et le stock disponible
+                        const clamped = Math.min(Math.max(parsed, 1), item.stock);
+                        updateQuantity(item.id, clamped);
+                      }}
+                      onBlur={e => {
+                        // Si l'utilisateur laisse le champ vide ou à 0 en sortant, on remet à 1
+                        const parsed = parseInt(e.target.value, 10);
+                        if (isNaN(parsed) || parsed < 1) {
+                          updateQuantity(item.id, 1);
+                        }
+                      }}
+                      onFocus={e => e.target.select()} // sélectionne tout le texte au focus, pratique pour retaper vite
+                      className="w-12 text-center text-sm font-medium border border-gray-200 rounded-md
+                                py-0.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none
+                                [&::-webkit-inner-spin-button]:appearance-none
+                                [&::-webkit-outer-spin-button]:appearance-none"
+                    />
 
-                <button
-                  onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                  disabled={item.quantity >= item.stock}
-                  className="w-6 h-6 rounded-full border border-gray-300 flex items-center
-                            justify-center text-gray-500 hover:bg-gray-200 transition-colors
-                            disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <Plus className="w-3 h-3" />
-                </button>
+                    <button
+                      onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                      disabled={item.quantity >= item.stock}
+                      className="w-6 h-6 rounded-full border border-gray-300 flex items-center
+                                justify-center text-gray-500 hover:bg-gray-200 transition-colors
+                                disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="number"
+                      step="0.001"
+                      min={0.001}
+                      value={item.quantity}
+                      onChange={e => {
+                        const parsed = parseFloat(e.target.value);
+                        updateQuantity(item.id, isNaN(parsed) ? 0 : Math.max(0, parsed));
+                      }}
+                      onFocus={e => e.target.select()}
+                      className="w-16 text-center text-sm font-medium border border-gray-200 rounded-md
+                                py-0.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none
+                                [&::-webkit-inner-spin-button]:appearance-none
+                                [&::-webkit-outer-spin-button]:appearance-none"
+                    />
+                    {compatibleUnits(item.unit_type).length > 1 ? (
+                      <select
+                        value={item.unite_vente}
+                        onChange={e => changeUnite(item.id, e.target.value)}
+                        className="text-xs border border-gray-200 rounded-md py-0.5 px-1
+                                  focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                      >
+                        {compatibleUnits(item.unit_type).map(u => (
+                          <option key={u} value={u}>{unitLabel(item.unit_type, u)}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-xs text-gray-400 px-1">
+                        {unitLabel(item.unit_type, item.unite_vente)}
+                      </span>
+                    )}
+                  </>
+                )}
                 <button
                   onClick={() => removeItem(item.id)}
                   className="ml-1 text-gray-300 hover:text-red-500 transition-colors"

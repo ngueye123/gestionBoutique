@@ -55,7 +55,8 @@ class VenteController extends Controller
         $validated = $request->validate([
             'items'                  => 'required|array|min:1',
             'items.*.id'             => 'required|integer|exists:products,id',
-            'items.*.quantity'       => 'required|integer|min:1',
+            'items.*.quantity'       => 'required|numeric|min:0.001',
+            'items.*.unite'          => 'nullable|string|max:10',
             'items.*.prix_override'  => 'nullable|numeric|min:0',
             'items.*.justification'  => 'nullable|string|max:255',
             'items.*.pin'            => 'nullable|string|max:10',

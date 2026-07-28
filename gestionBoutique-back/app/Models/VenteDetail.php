@@ -16,7 +16,10 @@ class VenteDetail extends Model
         'reference_produit',
         'nom_produit',
         'quantite',
+        'unite_vente',
+        'quantite_base',
         'prix_unitaire',
+        'unite_prix',
         'sous_total'
     ];
 
@@ -32,17 +35,6 @@ class VenteDetail extends Model
         return $this->belongsTo(Product::class, 'product_id');
     }
     
-    // Hook pour calculer automatiquement le sous-total avant la sauvegarde
-    protected static function boot()
-    {
-        parent::boot();
-        
-        static::creating(function ($venteDetail) {
-            $venteDetail->sous_total = $venteDetail->quantite * $venteDetail->prix_unitaire;
-        });
-
-        static::updating(function ($venteDetail) {
-            $venteDetail->sous_total = $venteDetail->quantite * $venteDetail->prix_unitaire;
-        });
-    }
+   
+   
 }

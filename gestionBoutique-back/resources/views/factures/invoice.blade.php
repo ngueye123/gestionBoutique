@@ -417,8 +417,8 @@
                         <td>
                             <strong>{{ $detail->nom_produit }}</strong>
                         </td>
-                        <td class="text-center">{{ $detail->quantite }}</td>
-                        <td class="text-right">{{ number_format($detail->prix_unitaire, 0, ',', ' ') }} F</td>
+                        <td class="text-center">{{ rtrim(rtrim(number_format($detail->quantite, 3, ',', ' '), '0'), ',') }} {{ $detail->unite_vente }}</td>
+                        <td class="text-right">{{ number_format($detail->prix_unitaire, 0, ',', ' ') }} F/{{ $detail->unite_prix }}</td>
                         <td class="text-right">{{ number_format($detail->sous_total, 0, ',', ' ') }} F</td>
                     </tr>
                 @endforeach

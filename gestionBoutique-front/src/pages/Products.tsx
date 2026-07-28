@@ -12,8 +12,11 @@ import { toast } from 'sonner';
 import { Product } from '../types';
 import { useAuthStore } from '../store/authStore';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
+import {
+  UNIT_CONFIG, UNIT_TYPE_LABELS, compatibleUnits, toBase, fromBase, type UnitType,
+} from '../lib/unitConverter';
 
-// ─── Validation Zod (identique à l'original) ──────────────────────────────────
+// ─── Validation Zod ─────────────────────────────────────────────────────────
 
 const productSchema = z.object({
   reference: z.string().min(1, 'La référence est obligatoire'),
@@ -22,6 +25,8 @@ const productSchema = z.object({
   stock:     z.number().min(0, 'Le stock doit être positif'),
   category:  z.string().min(1, 'La catégorie est obligatoire'),
   min_stock: z.number().min(0, 'Le stock minimum doit être positif'),
+  unit_type: z.enum(['piece', 'masse', 'volume', 'longueur']),
+  unit_reference: z.string().min(1, "L'unité est obligatoire"),
 });
 
 type ProductForm = z.infer<typeof productSchema>;
@@ -30,6 +35,15 @@ type ProductForm = z.infer<typeof productSchema>;
 
 const fmt = (n: number) =>
   Math.round(n).toLocaleString('fr-FR') + ' F';
+
+// Arrondit à 3 décimales et retire les zéros inutiles (250, 0.5, 1.25…)
+const formatQty = (n: number) => Number(n.toFixed(3)).toString();
+
+const unitLabel = (type: UnitType, unit: string) => UNIT_CONFIG[type].labels[unit] ?? unit;
+
+// Quantité affichable dans l'unité de référence du produit (le stock est stocké en unité de base)
+const displayQty = (product: Product, baseQty: number) =>
+  `${formatQty(fromBase(product.unit_type, product.unit_reference, baseQty))} ${unitLabel(product.unit_type, product.unit_reference)}`;
 
 // Retourne la config visuelle du badge stock
 const stockConfig = (product: Product): {
@@ -43,17 +57,17 @@ const stockConfig = (product: Product): {
     icon: <X className="w-3 h-3" />,
   };
   if (product.stock <= product.min_stock) return {
-    label: `${product.stock} unités`,
+    label: displayQty(product, product.stock),
     className: 'bg-orange-100 text-orange-700',
     icon: <AlertTriangle className="w-3 h-3" />,
   };
   if (product.stock <= product.min_stock * 2) return {
-    label: `${product.stock} unités`,
+    label: displayQty(product, product.stock),
     className: 'bg-yellow-100 text-yellow-700',
     icon: <AlertTriangle className="w-3 h-3" />,
   };
   return {
-    label: `${product.stock} unités`,
+    label: displayQty(product, product.stock),
     className: 'bg-green-100 text-green-700',
     icon: <Check className="w-3 h-3" />,
   };
@@ -103,9 +117,12 @@ function Products() {
   const { user } = useAuthStore();
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<ProductForm>({
+  const { register, handleSubmit, reset, watch, setValue, formState: { errors } } = useForm<ProductForm>({
     resolver: zodResolver(productSchema),
   });
+
+  const selectedUnitType = (watch('unit_type') || 'piece') as UnitType;
+  const selectedUnitReference = watch('unit_reference') || compatibleUnits(selectedUnitType)[0];
 
   // ── Permissions (logique identique à l'original) ──────────────────────────
 
@@ -156,10 +173,18 @@ function Products() {
         : `${API_URL}/products`;
       const method = editingProduct ? 'PUT' : 'POST';
 
+      // Le formulaire saisit stock/min_stock dans unit_reference (plus intuitif),
+      // on convertit vers l'unité de base attendue par l'API avant l'envoi.
+      const payload = {
+        ...form,
+        stock: toBase(form.unit_type, form.unit_reference, form.stock),
+        min_stock: toBase(form.unit_type, form.unit_reference, form.min_stock),
+      };
+
       const res    = await fetchWithAuth(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(payload),
       });
       const result = await res.json();
 
@@ -205,10 +230,15 @@ function Products() {
     setViewMode(mode);
     if (product) {
       setEditingProduct(product);
-      reset(product);
+      reset({
+        ...product,
+        // le formulaire affiche/édite le stock dans unit_reference, pas en unité de base
+        stock: fromBase(product.unit_type, product.unit_reference, product.stock),
+        min_stock: fromBase(product.unit_type, product.unit_reference, product.min_stock),
+      });
     } else {
       setEditingProduct(null);
-      reset({ reference: '', name: '', price: 0, stock: 0, category: '', min_stock: 0 });
+      reset({ reference: '', name: '', price: 0, stock: 0, category: '', min_stock: 0, unit_type: 'piece', unit_reference: 'piece' });
     }
     setIsModalOpen(true);
   };
@@ -250,7 +280,11 @@ function Products() {
     total:    products.length,
     low:      products.filter(p => p.stock > 0 && p.stock <= p.min_stock).length,
     rupture:  products.filter(p => p.stock === 0).length,
-    valeur:   products.reduce((s, p) => s + p.price * p.stock, 0),
+    // stock est en unité de base, price en unit_reference : on ramène le prix à la base avant de multiplier
+    valeur:   products.reduce(
+      (s, p) => s + (p.price / UNIT_CONFIG[p.unit_type].factors[p.unit_reference]) * p.stock,
+      0
+    ),
   }), [products]);
 
   // ─── Rendu ────────────────────────────────────────────────────────────────
@@ -524,6 +558,9 @@ function Products() {
                         <span className="text-sm font-medium text-gray-900">
                           {fmt(product.price)}
                         </span>
+                        <span className="text-xs text-gray-400">
+                          {' '}/ {unitLabel(product.unit_type, product.unit_reference)}
+                        </span>
                       </td>
 
                       {/* Stock */}
@@ -535,7 +572,7 @@ function Products() {
                         </span>
                         {/* Min stock en sous-texte */}
                         <p className="text-xs text-gray-300 mt-0.5">
-                          min : {product.min_stock}
+                          min : {displayQty(product, product.min_stock)}
                         </p>
                       </td>
 
@@ -638,9 +675,10 @@ function Products() {
                     { label: 'Référence',      value: editingProduct.reference, mono: true },
                     { label: 'Nom',             value: editingProduct.name },
                     { label: 'Catégorie',       value: editingProduct.category },
-                    { label: 'Prix',            value: fmt(editingProduct.price) },
-                    { label: 'Stock actuel',    value: `${editingProduct.stock} unités` },
-                    { label: 'Stock minimum',   value: `${editingProduct.min_stock} unités` },
+                    { label: "Type d'unité",    value: UNIT_TYPE_LABELS[editingProduct.unit_type] },
+                    { label: 'Prix',            value: `${fmt(editingProduct.price)} / ${unitLabel(editingProduct.unit_type, editingProduct.unit_reference)}` },
+                    { label: 'Stock actuel',    value: displayQty(editingProduct, editingProduct.stock) },
+                    { label: 'Stock minimum',   value: displayQty(editingProduct, editingProduct.min_stock) },
                   ].map(row => (
                     <div key={row.label}
                          className="flex items-center justify-between py-2.5 px-3
@@ -701,6 +739,37 @@ function Products() {
                     </Field>
                   </div>
 
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="Type d'unité" error={errors.unit_type?.message}>
+                      <select
+                        {...register('unit_type')}
+                        onChange={e => {
+                          const type = e.target.value as UnitType;
+                          setValue('unit_type', type);
+                          setValue('unit_reference', compatibleUnits(type)[0]);
+                        }}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
+                                   focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                      >
+                        {(Object.keys(UNIT_TYPE_LABELS) as UnitType[]).map(t => (
+                          <option key={t} value={t}>{UNIT_TYPE_LABELS[t]}</option>
+                        ))}
+                      </select>
+                    </Field>
+
+                    <Field label="Unité de référence" error={errors.unit_reference?.message}>
+                      <select
+                        {...register('unit_reference')}
+                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
+                                   focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                      >
+                        {compatibleUnits(selectedUnitType).map(u => (
+                          <option key={u} value={u}>{unitLabel(selectedUnitType, u)}</option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+
                   <Field label="Nom du produit" error={errors.name?.message}>
                     <input
                       type="text"
@@ -712,7 +781,7 @@ function Products() {
                     />
                   </Field>
 
-                  <Field label="Prix (FCFA)" error={errors.price?.message}>
+                  <Field label={`Prix (FCFA / ${unitLabel(selectedUnitType, selectedUnitReference)})`} error={errors.price?.message}>
                     <div className="relative">
                       <input
                         type="number"
@@ -731,9 +800,10 @@ function Products() {
                   </Field>
 
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="Stock actuel" error={errors.stock?.message}>
+                    <Field label={`Stock actuel (${unitLabel(selectedUnitType, selectedUnitReference)})`} error={errors.stock?.message}>
                       <input
                         type="number"
+                        step="0.001"
                         min="0"
                         {...register('stock', { valueAsNumber: true })}
                         placeholder="0"
@@ -743,9 +813,10 @@ function Products() {
                       />
                     </Field>
 
-                    <Field label="Stock minimum" error={errors.min_stock?.message}>
+                    <Field label={`Stock minimum (${unitLabel(selectedUnitType, selectedUnitReference)})`} error={errors.min_stock?.message}>
                       <input
                         type="number"
+                        step="0.001"
                         min="0"
                         {...register('min_stock', { valueAsNumber: true })}
                         placeholder="0"
