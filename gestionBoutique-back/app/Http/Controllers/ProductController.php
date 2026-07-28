@@ -76,17 +76,34 @@ class ProductController extends Controller
 
         $ownerId = $this->getOwnerId();
 
-        if (Product::where('reference', $validated['reference'])
+        $existingProduct = Product::withTrashed()
+            ->where('reference', $validated['reference'])
             ->where('utilisateur_id', $ownerId)
-            ->exists()) {
+            ->first();
+
+        if ($existingProduct && !$existingProduct->trashed()) {
             return response()->json([
                 'success' => false,
                 'message' => 'La référence du produit existe déjà pour ce patron'
             ], 400);
         }
 
-        $validated['utilisateur_id'] = $ownerId;
-        $product = Product::create($validated);
+        if ($existingProduct && $existingProduct->trashed()) {
+            $existingProduct->restore();
+            $existingProduct->update([
+                'name' => $validated['name'],
+                'price' => $validated['price'],
+                'stock' => $validated['stock'],
+                'category' => $validated['category'],
+                'min_stock' => $validated['min_stock'],
+                'unit_type' => $validated['unit_type'],
+                'unit_reference' => $validated['unit_reference'],
+            ]);
+            $product = $existingProduct->fresh();
+        } else {
+            $validated['utilisateur_id'] = $ownerId;
+            $product = Product::create($validated);
+        }
         $this->dashboardCache->invalidate($ownerId);
         return response()->json([
             'success' => true,

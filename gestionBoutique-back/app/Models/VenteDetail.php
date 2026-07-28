@@ -20,7 +20,9 @@ class VenteDetail extends Model
         'quantite_base',
         'prix_unitaire',
         'unite_prix',
-        'sous_total'
+        'sous_total',
+        'prix_original',
+        'prix_override',
     ];
 
     // Relation avec la vente parente

@@ -55,6 +55,20 @@ class VenteService
         try {
             $total      = 0;
             $venteItems = [];
+            $montantRecu = $validated['moyen_paiement'] === 'especes'
+                ? (float) ($validated['montant_recu'] ?? 0)
+                : null;
+
+            $vente = Vente::create([
+                'reference'       => Vente::generateReference(),
+                'utilisateur_id'  => $ownerId,
+                'employe_id'      => $employeId,
+                'client_id'       => $clientId,
+                'total'           => 0,
+                'moyen_paiement'  => $validated['moyen_paiement'],
+                'montant_recu'    => $montantRecu,
+                'monnaie'         => 0,
+            ]);
 
             foreach ($validated['items'] as $item) {
                 $product = Product::where('id', $item['id'])
@@ -117,21 +131,6 @@ class VenteService
                 throw new \RuntimeException('Montant reçu insuffisant', 400);
             }
 
-           $venteDetail = VenteDetail::create([
-                'vente_id'          => $vente->id,
-                'product_id'        => $product->id,
-                'reference_produit' => $product->reference,
-                'nom_produit'       => $product->name,
-                'quantite'          => $venteItem['quantity'],
-                'unite_vente'       => $venteItem['unite_vente'],
-                'quantite_base'     => $venteItem['quantite_base'],
-                'prix_unitaire'     => $venteItem['prix_final'],
-                'unite_prix'        => $product->unit_reference,
-                'sous_total'        => $venteItem['sous_total'],
-                'prix_original'     => $venteItem['is_override'] ? $venteItem['prix_normal'] : null,
-                'prix_override'     => $venteItem['is_override'],
-            ]);
-
             foreach ($venteItems as $venteItem) {
                 $product = $venteItem['product'];
 
@@ -141,7 +140,10 @@ class VenteService
                     'reference_produit' => $product->reference,
                     'nom_produit'       => $product->name,
                     'quantite'          => $venteItem['quantity'],
+                    'unite_vente'       => $venteItem['unite_vente'],
+                    'quantite_base'     => $venteItem['quantite_base'],
                     'prix_unitaire'     => $venteItem['prix_final'],
+                    'unite_prix'        => $product->unit_reference,
                     'sous_total'        => $venteItem['sous_total'],
                     'prix_original'     => $venteItem['is_override'] ? $venteItem['prix_normal'] : null,
                     'prix_override'     => $venteItem['is_override'],
@@ -180,6 +182,12 @@ class VenteService
                     );
                 }
             }
+
+            $vente->update([
+                'total' => round($total, 2),
+                'montant_recu' => $validated['moyen_paiement'] === 'especes' ? $montantRecu : null,
+                'monnaie' => $validated['moyen_paiement'] === 'especes' ? round(max(0, $montantRecu - $total), 2) : 0,
+            ]);
 
             if ($validated['moyen_paiement'] === 'dette' && $client) {
                 $client->ajouterDette($total);
