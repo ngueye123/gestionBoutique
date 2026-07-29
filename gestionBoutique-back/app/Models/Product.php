@@ -16,16 +16,16 @@ class Product extends Model
         'reference', 
         'name',
         'price',
+        'prix_achat',
         'stock',
         'category',
         'min_stock',
-        'utilisateur_id',
-        'unit_type',
-        'unit_reference'
+        'utilisateur_id'
     ];
     protected $casts = [
         'reference' => 'string',
         'price' => 'float',
+        'prix_achat' => 'float',
         'stock' => 'integer',
         'min_stock' => 'integer'
     ];

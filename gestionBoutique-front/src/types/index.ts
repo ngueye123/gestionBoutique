@@ -28,6 +28,7 @@ export interface Product {
   reference: string
   name: string
   price: number
+   prix_achat?: number | null
   stock: number
   category: string
   min_stock: number

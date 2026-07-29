@@ -63,6 +63,7 @@ class ProductController extends Controller
             'reference' => 'required|string',
             'name' => 'required|string',
             'price' => 'required|numeric|min:0',
+            'prix_achat' => 'nullable|numeric|min:0',
             'stock' => 'required|numeric|min:0',
             'category' => 'required|string',
             'min_stock' => 'nullable|numeric|min:0',
@@ -93,6 +94,7 @@ class ProductController extends Controller
             $existingProduct->update([
                 'name' => $validated['name'],
                 'price' => $validated['price'],
+                'prix_achat' => 'nullable|numeric|min:0',
                 'stock' => $validated['stock'],
                 'category' => $validated['category'],
                 'min_stock' => $validated['min_stock'],
@@ -145,6 +147,7 @@ class ProductController extends Controller
         $validated = $request->validate([
             'name' => 'required|string',
             'price' => 'required|numeric|min:0',
+            'prix_achat' => 'nullable|numeric|min:0',
             'stock' => 'required|numeric|min:0',
             'category' => 'required|string',
             'min_stock' => 'nullable|numeric|min:0',

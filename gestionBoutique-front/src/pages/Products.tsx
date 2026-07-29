@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Plus, Edit2, Trash2, Eye, Search, Package,
-  AlertTriangle, TrendingDown, Wallet, X, Check,
+  AlertTriangle, TrendingDown, TrendingUp, Wallet, X, Check,
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -22,6 +22,7 @@ const productSchema = z.object({
   reference: z.string().min(1, 'La référence est obligatoire'),
   name:      z.string().min(1, 'Le nom est obligatoire'),
   price:     z.number().min(0, 'Le prix doit être positif'),
+  prix_achat: z.number().min(0, "Le prix d'achat doit être positif").optional().nullable(),
   stock:     z.number().min(0, 'Le stock doit être positif'),
   category:  z.string().min(1, 'La catégorie est obligatoire'),
   min_stock: z.number().min(0, 'Le stock minimum doit être positif'),
@@ -238,7 +239,7 @@ function Products() {
       });
     } else {
       setEditingProduct(null);
-      reset({ reference: '', name: '', price: 0, stock: 0, category: '', min_stock: 0, unit_type: 'piece', unit_reference: 'piece' });
+      reset({ reference: '', name: '', price: 0, prix_achat: undefined, stock: 0, category: '', min_stock: 0, unit_type: 'piece', unit_reference: 'piece' });
     }
     setIsModalOpen(true);
   };
@@ -276,16 +277,26 @@ function Products() {
   }, [products, searchTerm, categoryFilter, stockFilter]);
 
   // KPIs
-  const kpis = useMemo(() => ({
-    total:    products.length,
-    low:      products.filter(p => p.stock > 0 && p.stock <= p.min_stock).length,
-    rupture:  products.filter(p => p.stock === 0).length,
-    // stock est en unité de base, price en unit_reference : on ramène le prix à la base avant de multiplier
-    valeur:   products.reduce(
-      (s, p) => s + (p.price / UNIT_CONFIG[p.unit_type].factors[p.unit_reference]) * p.stock,
-      0
-    ),
-  }), [products]);
+  const kpis = useMemo(() => {
+      const avecPrixAchat = products.filter(p => p.prix_achat != null && p.prix_achat > 0);
+
+      // Somme des marges unitaires (FCFA), sur les produits où prix_achat est renseigné
+      const margeTotale = avecPrixAchat.length > 0
+        ? avecPrixAchat.reduce((s, p) => s + (p.price - (p.prix_achat as number)), 0)
+        : null;
+
+      return {
+        total:    products.length,
+        low:      products.filter(p => p.stock > 0 && p.stock <= p.min_stock).length,
+        rupture:  products.filter(p => p.stock === 0).length,
+        valeur:   products.reduce(
+          (s, p) => s + (p.price / UNIT_CONFIG[p.unit_type].factors[p.unit_reference]) * p.stock,
+          0
+        ),
+        margeTotale,
+        nbSansPrixAchat: products.length - avecPrixAchat.length,
+      };
+    }, [products]);
 
   // ─── Rendu ────────────────────────────────────────────────────────────────
 
@@ -315,7 +326,7 @@ function Products() {
       )}
 
       {/* ── KPIs ──────────────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {[
           {
             label: 'Total produits',
@@ -348,6 +359,16 @@ function Products() {
             icon:  <Wallet className="w-5 h-5" />,
             color: '#8b5cf6',
             valueColor: undefined,
+          },
+          {
+            label: 'Marge totale',
+            value: kpis.margeTotale != null ? fmt(kpis.margeTotale) : '—',
+            sub:   kpis.nbSansPrixAchat > 0
+              ? `${kpis.nbSansPrixAchat} produit${kpis.nbSansPrixAchat > 1 ? 's' : ''} sans prix d'achat`
+              : 'cumul prix vente − prix achat',
+            icon:  <TrendingUp className="w-5 h-5" />,
+            color: kpis.margeTotale != null && kpis.margeTotale < 0 ? '#ef4444' : '#16a34a',
+            valueColor: kpis.margeTotale != null && kpis.margeTotale < 0 ? '#dc2626' : undefined,
           },
         ].map(kpi => (
           <div key={kpi.label}
@@ -677,6 +698,7 @@ function Products() {
                     { label: 'Catégorie',       value: editingProduct.category },
                     { label: "Type d'unité",    value: UNIT_TYPE_LABELS[editingProduct.unit_type] },
                     { label: 'Prix',            value: `${fmt(editingProduct.price)} / ${unitLabel(editingProduct.unit_type, editingProduct.unit_reference)}` },
+                    { label: "Prix d'achat",    value: editingProduct.prix_achat != null ? fmt(editingProduct.prix_achat) : 'Non renseigné' },
                     { label: 'Stock actuel',    value: displayQty(editingProduct, editingProduct.stock) },
                     { label: 'Stock minimum',   value: displayQty(editingProduct, editingProduct.min_stock) },
                   ].map(row => (
@@ -779,6 +801,24 @@ function Products() {
                                  focus:ring-2 focus:ring-blue-500 focus:border-blue-500
                                  placeholder-gray-300 transition"
                     />
+                  </Field>
+
+                  <Field label="Prix d'achat (FCFA, optionnel)" error={errors.prix_achat?.message}>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="1"
+                        min="0"
+                        {...register('prix_achat', { valueAsNumber: true, setValueAs: v => (v === '' || isNaN(v) ? undefined : v) })}
+                        placeholder="Non renseigné"
+                        className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm
+                                   focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+                                   placeholder-gray-300 transition"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">
+                        F
+                      </span>
+                    </div>
                   </Field>
 
                   <Field label={`Prix (FCFA / ${unitLabel(selectedUnitType, selectedUnitReference)})`} error={errors.price?.message}>
