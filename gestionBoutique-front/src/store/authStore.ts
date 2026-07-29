@@ -39,7 +39,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   canManageProducts: () => {
     const user = get().user;
-    return user?.user_type === 'patron' || user?.role === 'admin';
+    return user?.user_type === 'patron' || user?.role === 'admin' || user?.role === 'vendeur' ;
   },
 
   canManageEmployees: () => {

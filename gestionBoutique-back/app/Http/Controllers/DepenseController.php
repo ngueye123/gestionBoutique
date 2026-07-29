@@ -52,15 +52,18 @@ class DepenseController extends Controller
         if ($actor instanceof Utilisateur) {
             return $actor;
         }
-
-        if ($actor instanceof Employe && $actor->role === 'admin') {
+        
+        $patron = Utilisateur::find($actor->utilisateur_id);
+        return $patron;
+        /** 
+        if ($actor instanceof Employe && $actor->role === 'admin' && $actor->role=='vendeur') {
             $patron = Utilisateur::find($actor->utilisateur_id);
             if ($patron) {
                 return $patron;
             }
-        }
+        } */
 
-        abort(403, 'Accès refusé aux dépenses.');
+        //abort(403, 'Accès refusé aux dépenses.');
     }
 
     
@@ -218,6 +221,7 @@ class DepenseController extends Controller
                 'categorie'    => 'nullable|string|in:' . implode(',', array_keys(Depense::CATEGORIES)),
             ]);
 
+            $ownerId = $this->getOwnerId();
             $depense = Depense::create([
                 'utilisateur_id' => $patron->id,
                 'montant'        => floatval($validated['montant']),
