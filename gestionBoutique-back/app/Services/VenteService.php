@@ -10,6 +10,7 @@ use App\Models\Caisse;
 use App\Models\Employe;
 use App\Models\SecuritySetting;
 use App\Models\PriceOverride;
+use App\Models\VentePaiement;
 use App\Models\Utilisateur;
 use App\Support\UnitConverter;
 use App\Notifications\PriceOverrideNotification;
@@ -34,19 +35,23 @@ class VenteService
      *
      * @throws \Exception  En cas d'erreur métier ou base de données
      */
-    public function enregistrerVente(array $validated, mixed $actor): array
+   public function enregistrerVente(array $validated, mixed $actor): array
     {
         $ownerId   = $actor instanceof Employe ? $actor->utilisateur_id : $actor->id;
         $employeId = $actor instanceof Employe ? $actor->id : null;
 
-        $client   = null;
-        $clientId = null;
+        $paiements = $validated['paiements'];
 
-        if ($validated['moyen_paiement'] === 'dette') {
-            if (empty($validated['client_id'])) {
+        // --- Contrôle C3 : dette exige un client rattaché ---
+        $ligneDette = collect($paiements)->firstWhere('mode', 'dette');
+        $client     = null;
+        $clientId   = null;
+
+        if ($ligneDette) {
+            if (empty($ligneDette['client_id'])) {
                 throw new \RuntimeException('Client requis pour une vente à crédit', 400);
             }
-            $client   = Client::byUtilisateur($ownerId)->findOrFail($validated['client_id']);
+            $client   = Client::byUtilisateur($ownerId)->findOrFail($ligneDette['client_id']);
             $clientId = $client->id;
         }
 
@@ -55,9 +60,6 @@ class VenteService
         try {
             $total      = 0;
             $venteItems = [];
-            $montantRecu = $validated['moyen_paiement'] === 'especes'
-                ? (float) ($validated['montant_recu'] ?? 0)
-                : null;
 
             $vente = Vente::create([
                 'reference'       => Vente::generateReference(),
@@ -65,11 +67,12 @@ class VenteService
                 'employe_id'      => $employeId,
                 'client_id'       => $clientId,
                 'total'           => 0,
-                'moyen_paiement'  => $validated['moyen_paiement'],
-                'montant_recu'    => $montantRecu,
+                'moyen_paiement'  => count($paiements) > 1 ? 'mixte' : $paiements[0]['mode'],
+                'montant_recu'    => null,
                 'monnaie'         => 0,
             ]);
 
+            // --- Traitement des articles (inchangé) ---
             foreach ($validated['items'] as $item) {
                 $product = Product::where('id', $item['id'])
                     ->where('utilisateur_id', $ownerId)
@@ -99,7 +102,6 @@ class VenteService
                     );
                 }
 
-                // --- Surcharge de prix ---
                 $prixNormal = $product->price;
                 $prixFinal  = $item['prix_override'] ?? $prixNormal;
                 $isOverride = bccomp((string) $prixFinal, (string) $prixNormal, 2) !== 0;
@@ -124,13 +126,65 @@ class VenteService
                 ];
             }
 
-            if (
-                $validated['moyen_paiement'] === 'especes'
-                && (!isset($validated['montant_recu']) || $validated['montant_recu'] < $total)
-            ) {
-                throw new \RuntimeException('Montant reçu insuffisant', 400);
+            // --- Contrôles C1/C2/C6/C7 : ventilation des paiements sur le total ---
+            $resteAPayer     = round($total, 2);
+            $montantRecuEspeces = 0.0;
+            $monnaieTotal       = 0.0;
+            $lignesAPersister   = [];
+
+            foreach ($paiements as $p) {
+                $mode = $p['mode'];
+
+                if ($mode === 'especes') {
+                    $montantRecu    = round((float) ($p['montant_recu'] ?? 0), 2);
+                    if ($montantRecu <= 0) {
+                        throw new \RuntimeException('Montant reçu en espèces invalide', 400);
+                    }
+                    $montantAffecte = min($montantRecu, $resteAPayer);
+                    $monnaie        = round($montantRecu - $montantAffecte, 2);
+
+                    $lignesAPersister[] = [
+                        'mode'            => 'especes',
+                        'montant'         => $montantAffecte,
+                        'montant_recu'    => $montantRecu,
+                        'monnaie_rendue'  => $monnaie,
+                    ];
+
+                    $montantRecuEspeces += $montantRecu;
+                    $monnaieTotal       += $monnaie;
+                    $resteAPayer         = round($resteAPayer - $montantAffecte, 2);
+
+                } else {
+                    $montant = round((float) ($p['montant'] ?? 0), 2);
+                    if ($montant <= 0) {
+                        throw new \RuntimeException("Montant invalide pour le mode {$mode}", 400);
+                    }
+                    if ($montant - $resteAPayer > 0.01) {
+                        throw new \RuntimeException(
+                            "Le montant en {$mode} ({$montant}) dépasse le reste à payer ({$resteAPayer})",
+                            400
+                        );
+                    }
+
+                    $lignesAPersister[] = [
+                        'mode'                    => $mode,
+                        'montant'                 => $montant,
+                        'reference_transaction'   => $p['reference_transaction'] ?? null,
+                        'client_id'               => $mode === 'dette' ? $clientId : null,
+                    ];
+
+                    $resteAPayer = round($resteAPayer - $montant, 2);
+                }
             }
 
+            if ($resteAPayer > 0.01) {
+                throw new \RuntimeException(
+                    "Paiement incomplet : il reste {$resteAPayer} F à payer",
+                    422
+                );
+            }
+
+            // --- Persistance des lignes d'articles (inchangé) ---
             foreach ($venteItems as $venteItem) {
                 $product = $venteItem['product'];
 
@@ -150,10 +204,6 @@ class VenteService
                 ]);
 
                 if ($venteItem['is_override']) {
-                    // Note: the `price_overrides` table defines an `employe_id` FK
-                    // constrained to `utilisateurs`. To match the migration, store
-                    // the owner utilisateur id in `employe_id` and avoid writing
-                    // a non-existent `utilisateur_id` column.
                     $priceOverride = PriceOverride::create([
                         'vente_id'        => $vente->id,
                         'vente_detail_id' => $venteDetail->id,
@@ -166,7 +216,6 @@ class VenteService
                         'ip_address'      => request()->ip(),
                     ]);
 
-                    // Envoi asynchrone (queue), ne bloque pas l'encaissement
                     Notification::route('mail', Utilisateur::find($ownerId)->email)
                         ->notify(new PriceOverrideNotification($priceOverride, $product, $actor));
                 }
@@ -183,30 +232,42 @@ class VenteService
                 }
             }
 
-            $vente->update([
-                'total' => round($total, 2),
-                'montant_recu' => $validated['moyen_paiement'] === 'especes' ? $montantRecu : null,
-                'monnaie' => $validated['moyen_paiement'] === 'especes' ? round(max(0, $montantRecu - $total), 2) : 0,
-            ]);
+            // --- Persistance des lignes de paiement + effets de bord par mode ---
+            $caisse     = null;
+            $caisseInfo = null;
 
-            if ($validated['moyen_paiement'] === 'dette' && $client) {
-                $client->ajouterDette($total);
+            foreach ($lignesAPersister as $ligne) {
+                VentePaiement::create(array_merge(
+                    ['vente_id' => $vente->id],
+                    $ligne
+                ));
+
+                if ($ligne['mode'] === 'especes') {
+                    $caisse ??= Caisse::pour($actor);
+                    $caisse->crediter($ligne['montant'], 'vente', $vente->id, "Vente {$vente->reference}");
+                }
+
+                if ($ligne['mode'] === 'dette' && $client) {
+                    $client->ajouterDette($ligne['montant']);
+                }
             }
 
-            $caisseInfo = null;
-            if ($validated['moyen_paiement'] === 'especes') {
-                $caisse = Caisse::pour($actor);
-                $caisse->crediter($total, 'vente', $vente->id, "Vente {$vente->reference}");
+            if ($caisse) {
                 $caisse->refresh();
-
                 $caisseInfo = $this->caisseService->buildCaisseInfo($caisse);
             }
+
+            $vente->update([
+                'total'        => round($total, 2),
+                'montant_recu' => $montantRecuEspeces > 0 ? $montantRecuEspeces : null,
+                'monnaie'      => round($monnaieTotal, 2),
+            ]);
 
             DB::commit();
 
             $this->dashboardCache->invalidate($ownerId);
 
-            $vente->load('details', 'client');
+            $vente->load('details', 'client', 'paiements');
 
             return [
                 'vente'                => $vente,
@@ -218,10 +279,10 @@ class VenteService
             DB::rollBack();
 
             Log::error('Erreur enregistrement vente', [
-                'actor_id'       => $actor->id,
-                'actor_type'     => $actor instanceof Employe ? 'employe' : 'patron',
-                'moyen_paiement' => $validated['moyen_paiement'],
-                'error'          => $e->getMessage(),
+                'actor_id'   => $actor->id,
+                'actor_type' => $actor instanceof Employe ? 'employe' : 'patron',
+                'paiements'  => $paiements,
+                'error'      => $e->getMessage(),
             ]);
 
             throw $e;

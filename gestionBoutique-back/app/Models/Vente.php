@@ -63,6 +63,14 @@ class Vente extends Model
     }
 
     /**
+     * Lignes de paiement de la vente (split payment)
+     */
+    public function paiements(): HasMany
+    {
+        return $this->hasMany(VentePaiement::class, 'vente_id');
+    }
+
+    /**
      * Vérifier si c'est une vente à crédit
      */
     public function estVenteACredit(): bool

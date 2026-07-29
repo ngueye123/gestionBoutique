@@ -52,17 +52,21 @@ class VenteController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'items'                  => 'required|array|min:1',
-            'items.*.id'             => 'required|integer|exists:products,id',
-            'items.*.quantity'       => 'required|numeric|min:0.001',
-            'items.*.unite'          => 'nullable|string|max:10',
-            'items.*.prix_override'  => 'nullable|numeric|min:0',
-            'items.*.justification'  => 'nullable|string|max:255',
-            'items.*.pin'            => 'nullable|string|max:10',
-            'moyen_paiement'         => 'required|in:especes,wave,orange_money,carte,dette',
-            'montant_recu'           => 'nullable|numeric|min:0',
-            'client_id'              => 'required_if:moyen_paiement,dette|nullable|integer|exists:clients,id',
+       $validated = $request->validate([
+            'items'                              => 'required|array|min:1',
+            'items.*.id'                         => 'required|integer|exists:products,id',
+            'items.*.quantity'                   => 'required|numeric|min:0.001',
+            'items.*.unite'                       => 'nullable|string|max:10',
+            'items.*.prix_override'               => 'nullable|numeric|min:0',
+            'items.*.justification'                => 'nullable|string|max:255',
+            'items.*.pin'                           => 'nullable|string|max:10',
+
+            'paiements'                              => 'required|array|min:1',
+            'paiements.*.mode'                        => 'required|in:especes,wave,orange_money,dette',
+            'paiements.*.montant'                      => 'required_unless:paiements.*.mode,especes|nullable|numeric|min:0.01',
+            'paiements.*.montant_recu'                  => 'required_if:paiements.*.mode,especes|nullable|numeric|min:0.01',
+            'paiements.*.reference_transaction'          => 'nullable|string|max:50',
+            'paiements.*.client_id'                       => 'required_if:paiements.*.mode,dette|nullable|integer|exists:clients,id',
         ]);
 
         try {

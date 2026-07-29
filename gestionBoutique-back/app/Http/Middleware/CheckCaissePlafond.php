@@ -12,8 +12,11 @@ class CheckCaissePlafond
 {
     public function handle(Request $request, Closure $next)
     {
-        // Intercepte uniquement les opérations en espèces
-        if ($request->input('moyen_paiement') !== 'especes') {
+        // Intercepte uniquement les opérations comportant une part payée en espèces
+        $ligneEspeces = collect($request->input('paiements', []))
+            ->firstWhere('mode', 'especes');
+
+        if (!$ligneEspeces && $request->input('type_operation') !== 'remboursement_dette') {
             return $next($request);
         }
 
@@ -35,17 +38,11 @@ class CheckCaissePlafond
             ], 422);
         }
 
-        // 2. Calcul montant entrant
-        $montantEntrant = 0;
+        // 2. Calcul montant entrant : uniquement la part réellement remise en espèces
         if ($request->input('type_operation') === 'remboursement_dette') {
             $montantEntrant = floatval($request->input('montant_rembourse', 0));
         } else {
-            foreach ($request->input('items', []) as $item) {
-                $produit = \App\Models\Product::find($item['id'] ?? null);
-                if ($produit) {
-                    $montantEntrant += $produit->price * ($item['quantity'] ?? 1);
-                }
-            }
+            $montantEntrant = (float) ($ligneEspeces['montant_recu'] ?? 0);
         }
 
         $soldeApres  = $caisse->solde_actuel + $montantEntrant;

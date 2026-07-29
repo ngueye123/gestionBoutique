@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   TrendingDown, TrendingUp, Settings, RefreshCw,
   Download, ChevronRight, Filter, X, AlertTriangle,
@@ -91,18 +91,6 @@ const Jauge = ({ pourcentage, niveau }: { pourcentage: number; niveau: StatutAle
     </div>
   );
 };
-
-// ─── Composant carte stat ─────────────────────────────────────────────────────
-
-const StatCard = ({ label, value, sub, accent }: {
-  label: string; value: string; sub?: string; accent?: string;
-}) => (
-  <div className="bg-white rounded-xl border border-gray-100 p-4 shadow-sm">
-    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">{label}</p>
-    <p className={`text-2xl font-bold ${accent ?? 'text-gray-900'}`}>{value}</p>
-    {sub && <p className="text-xs text-gray-400 mt-1">{sub}</p>}
-  </div>
-);
 
 // ─── Composant principal ──────────────────────────────────────────────────────
 
@@ -285,29 +273,29 @@ export default function Caisse() {
   const pct = statut?.pourcentage ?? 0;
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6 space-y-5">
+    <div className="max-w-4xl mx-auto px-2 sm:px-4 py-4 sm:py-6 space-y-4 sm:space-y-5">
 
       {/* ══ HERO : Solde principal ══════════════════════════════════════════ */}
       {caisse && statut && (
-        <div className={`rounded-2xl border-2 ${cfg.border} ${cfg.bg} p-6`}>
+        <div className={`rounded-2xl border-2 ${cfg.border} ${cfg.bg} p-4 sm:p-6`}>
 
           {/* Header */}
-          <div className="flex items-start justify-between mb-5">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row items-start sm:items-start justify-between gap-3 sm:gap-0 mb-4 sm:mb-5">
+            <div className="flex items-center gap-2 sm:gap-3">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${cfg.badge}`}>
                 <Wallet className="w-5 h-5" />
               </div>
               <div>
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-widest">Solde caisse</p>
-                <p className="text-3xl font-bold text-gray-900 leading-none mt-0.5">
+                <p className="text-2xl sm:text-3xl font-bold text-gray-900 leading-none mt-0.5">
                   {fmt(caisse.solde_actuel)}
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               {statut.niveau && (
-                <span className={`text-xs font-semibold px-3 py-1.5 rounded-full ${cfg.badge}`}>
-                  {cfg.icon} {statut.label}
+                <span className={`text-xs font-semibold px-2 sm:px-3 py-1 sm:py-1.5 rounded-full ${cfg.badge}`}>
+                  {cfg.icon} <span className="hidden sm:inline">{statut.label}</span>
                 </span>
               )}
               <button
@@ -323,14 +311,14 @@ export default function Caisse() {
           <Jauge pourcentage={pct} niveau={statut.niveau} />
 
           {/* Stats rapides */}
-          <div className="grid grid-cols-2 gap-3 mt-5">
-            <div className="bg-white/70 rounded-xl p-3 border border-white">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 mt-4 sm:mt-5">
+            <div className="bg-white/70 rounded-xl p-2.5 sm:p-3 border border-white">
               <p className="text-xs text-gray-500 mb-0.5">Plafond</p>
-              <p className="text-lg font-bold text-gray-800">{fmt(caisse.plafond)}</p>
+              <p className="text-base sm:text-lg font-bold text-gray-800">{fmt(caisse.plafond)}</p>
             </div>
-            <div className="bg-white/70 rounded-xl p-3 border border-white">
+            <div className="bg-white/70 rounded-xl p-2.5 sm:p-3 border border-white">
               <p className="text-xs text-gray-500 mb-0.5">Disponible</p>
-              <p className={`text-lg font-bold ${cfg.text}`}>
+              <p className={`text-base sm:text-lg font-bold ${cfg.text}`}>
                 {fmt(Math.max(0, caisse.plafond - caisse.solde_actuel))}
               </p>
             </div>
@@ -338,9 +326,9 @@ export default function Caisse() {
 
           {/* Message d'alerte */}
           {statut.niveau && (
-            <div className={`mt-4 flex items-center gap-2.5 p-3 rounded-xl border ${cfg.border} bg-white/50`}>
-              <AlertTriangle className={`w-4 h-4 flex-shrink-0 ${cfg.text}`} />
-              <p className={`text-sm font-medium ${cfg.text}`}>
+            <div className={`mt-3 sm:mt-4 flex items-start sm:items-center gap-2.5 p-2.5 sm:p-3 rounded-xl border ${cfg.border} bg-white/50`}>
+              <AlertTriangle className={`w-4 h-4 flex-shrink-0 mt-0.5 sm:mt-0 ${cfg.text}`} />
+              <p className={`text-xs sm:text-sm font-medium ${cfg.text}`}>
                 {statut.niveau === 'danger'   && 'Plafond atteint — les ventes espèces sont bloquées.'}
                 {statut.niveau === 'critique' && `${pct}% du plafond atteint — effectuez un prélèvement.`}
                 {statut.niveau === 'warning'  && `${pct}% du plafond — pensez à prélever bientôt.`}

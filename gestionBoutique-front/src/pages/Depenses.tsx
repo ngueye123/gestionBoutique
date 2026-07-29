@@ -1,6 +1,6 @@
 // src/pages/Depenses.tsx
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Edit2, TrendingDown, Calendar,
   RefreshCw, X, ChevronDown, ChevronUp, Tag,
@@ -198,20 +198,20 @@ export default function Depenses() {
   const periodeLabel = data?.periode.label ?? '';
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
+    <div className="space-y-4 sm:space-y-6 max-w-5xl mx-auto px-2 sm:px-4">
 
       {/* ── En-tête ─────────────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Gestion des dépenses</h1>
-          <p className="text-sm text-gray-500">
+          <p className="text-xs sm:text-sm text-gray-500">
             {periodeLabel ? `Période : ${periodeLabel}` : 'Suivez vos dépenses par période'}
           </p>
         </div>
         <button
           onClick={() => { resetForm(); setShowForm(s => !s); }}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600
-                     text-white rounded-lg hover:bg-blue-700 transition"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-2 bg-blue-600
+                     text-white rounded-lg hover:bg-blue-700 transition text-sm"
         >
           <Plus className="w-4 h-4" />
           Nouvelle dépense
@@ -220,9 +220,9 @@ export default function Depenses() {
 
       {/* ── Formulaire ──────────────────────────────────────────────────── */}
       {showForm && (
-        <div className="bg-white rounded-xl border p-5 shadow-sm">
+        <div className="bg-white rounded-xl border p-3 sm:p-5 shadow-sm">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-700">
+            <h2 className="font-semibold text-gray-700 text-sm sm:text-base">
               {editingId ? 'Modifier la dépense' : 'Nouvelle dépense'}
             </h2>
             <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
@@ -230,11 +230,11 @@ export default function Depenses() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
 
             {/* Description */}
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                 Description <span className="text-red-500">*</span>
               </label>
               <input
@@ -242,7 +242,7 @@ export default function Depenses() {
                 value={form.description}
                 onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                 placeholder="Ex : Achat matériel bureau"
-                className={`w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500
+                className={`w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500
                   ${formErrors.description ? 'border-red-400' : ''}`}
               />
               {formErrors.description && (
@@ -252,7 +252,7 @@ export default function Depenses() {
 
             {/* Montant */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                 Montant (F) <span className="text-red-500">*</span>
               </label>
               <input
@@ -262,7 +262,7 @@ export default function Depenses() {
                 value={form.montant}
                 onChange={e => setForm(f => ({ ...f, montant: e.target.value }))}
                 placeholder="Ex : 15000"
-                className={`w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-500
+                className={`w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500
                   ${formErrors.montant ? 'border-red-400' : ''}`}
               />
               {formErrors.montant && (
@@ -272,7 +272,7 @@ export default function Depenses() {
 
             {/* Date */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
                 Date <span className="text-red-500">*</span>
               </label>
               <input

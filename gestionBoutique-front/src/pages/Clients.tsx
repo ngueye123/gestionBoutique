@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { User, Phone, DollarSign, Plus, Eye, Edit2, Trash2, Search } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { User, Phone, Plus, Eye, Edit2, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/authStore';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
@@ -15,7 +15,7 @@ export default function Clients() {
   const [filterDettes, setFilterDettes] = useState(false);
   
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-  const { token } = useAuthStore();
+  const { } = useAuthStore();
 
   useEffect(() => {
     fetchClients();
@@ -137,23 +137,23 @@ export default function Clients() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6 px-2 sm:px-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Gestion des clients</h1>
-          <p className="text-gray-600">Gérez vos clients et leurs dettes</p>
+          <p className="text-gray-600 text-sm">Gérez vos clients et leurs dettes</p>
         </div>
         <button
           onClick={() => openModal()}
-          className="bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 flex items-center"
+          className="w-full sm:w-auto bg-blue-500 text-white px-4 py-2 rounded-md hover:bg-blue-600 flex items-center justify-center"
         >
           <Plus className="w-4 h-4 mr-2" />
           Nouveau client
         </button>
       </div>
 
-      <div className="bg-white p-4 rounded-lg shadow-sm">
-        <div className="flex items-center justify-between gap-4">
+      <div className="bg-white p-3 sm:p-4 rounded-lg shadow-sm">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
             <input
@@ -161,60 +161,59 @@ export default function Clients() {
               placeholder="Rechercher par nom ou téléphone..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 text-sm"
             />
           </div>
-          <label className="flex items-center space-x-2 cursor-pointer">
+          <label className="flex items-center space-x-2 cursor-pointer whitespace-nowrap">
             <input
               type="checkbox"
               checked={filterDettes}
               onChange={(e) => setFilterDettes(e.target.checked)}
               className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            <span className="text-sm text-gray-700">Avec dettes uniquement</span>
+            <span className="text-sm text-gray-700">Avec dettes</span>
           </label>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white p-6 rounded-lg shadow-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+        <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Total clients</p>
-              <p className="text-2xl font-bold text-gray-800">{clients.length}</p>
+              <p className="text-xs sm:text-sm text-gray-600">Total clients</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-800">{clients.length}</p>
             </div>
-            <div className="p-3 bg-blue-100 rounded-full">
-              <User className="w-6 h-6 text-blue-600" />
+            <div className="p-2 sm:p-3 bg-blue-100 rounded-full">
+              <User className="w-5 sm:w-6 h-5 sm:h-6 text-blue-600" />
             </div>
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm">
+        <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Clients avec dettes</p>
-              <p className="text-2xl font-bold text-gray-800">
+              <p className="text-xs sm:text-sm text-gray-600">Clients avec dettes</p>
+              <p className="text-xl sm:text-2xl font-bold text-gray-800">
                 {clientsAvecDettes}
               </p>
             </div>
-            
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-lg shadow-sm">
+        <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-600">Total des dettes</p>
-              <p className="text-2xl font-bold text-red-600">
+              <p className="text-xs sm:text-sm text-gray-600">Total des dettes</p>
+              <p className="text-xl sm:text-2xl font-bold text-red-600">
                 {totalDettes.toFixed(2)} F
               </p>
             </div>
-         
           </div>
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+      {/* Table — Desktop */}
+      <div className="hidden md:block bg-white rounded-lg shadow-sm overflow-hidden">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -290,6 +289,71 @@ export default function Clients() {
           <div className="text-center py-12 text-gray-500">
             <User className="w-12 h-12 mx-auto mb-3 text-gray-300" />
             <p>Aucun client trouvé</p>
+          </div>
+        )}
+      </div>
+
+      {/* Cartes — Mobile */}
+      <div className="md:hidden space-y-3">
+        {filteredClients.map((client) => {
+          const soldeDette = getSoldeDette(client.solde_dette);
+          return (
+            <div key={client.id} className="bg-white p-4 rounded-lg border border-gray-200">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <div className="flex-shrink-0 h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                    <User className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-900">{client.nom}</p>
+                    <div className="flex items-center text-xs text-gray-600 mt-1">
+                      <Phone className="w-3 h-3 mr-1" />
+                      {client.telephone}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-xs text-gray-500 mb-1">Dette</p>
+                  <span className={`px-2 py-1 rounded-full text-xs font-medium inline-block ${
+                    soldeDette === 0
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {soldeDette.toFixed(2)} F
+                  </span>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => window.location.href = `/clients/${client.id}`}
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-md"
+                  title="Voir détails"
+                >
+                  <Eye className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => openModal(client)}
+                  className="p-2 text-gray-600 hover:bg-gray-50 rounded-md"
+                  title="Modifier"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => handleDelete(client.id)}
+                  className="p-2 text-red-600 hover:bg-red-50 rounded-md disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Supprimer"
+                  disabled={soldeDette > 0}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        {filteredClients.length === 0 && (
+          <div className="text-center py-12 text-gray-500">
+            <User className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <p className="text-sm">Aucun client trouvé</p>
           </div>
         )}
       </div>

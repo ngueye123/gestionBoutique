@@ -2,14 +2,13 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Search, ShoppingCart, Plus, Minus, X, User,
+  Search, ShoppingCart, Plus, Minus, X,
   CheckCircle, FileText, Trash2, CreditCard,
   Smartphone, Banknote, Clock, Pencil,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Product, Client } from '../types';
 import { useCartStore } from '../store/cartStore';
-import { useAuthStore } from '../store/authStore';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { InvoiceButton } from '../components/InvoiceButton';
 import { InvoiceSearch } from '../components/InvoiceSearch';
@@ -18,7 +17,17 @@ import { PriceOverrideModal } from '../components/PriceOverrideModal';
 import type { BloquageInfo } from '../hooks/useCaisse';
 import { UNIT_CONFIG, compatibleUnits, fromBase, lineSubtotal } from '../lib/unitConverter';
 
-type PaymentMethod = 'especes' | 'wave' | 'orange_money' | 'carte' | 'dette';
+type PaymentMethod = 'especes' | 'wave' | 'orange_money' | 'dette';
+
+interface LignePaiement {
+  id: string;
+  mode: PaymentMethod;
+  montant: number;           // montant affecté à la vente
+  montant_recu?: number;     // espèces uniquement
+  client_id?: number;
+  client_nom?: string;       // affichage uniquement
+  reference_transaction?: string;
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -54,8 +63,9 @@ export default function POS() {
   const [clients, setClients]               = useState<Client[]>([]);
   const [searchTerm, setSearchTerm]         = useState('');
   const [clientSearch, setClientSearch]     = useState('');
-  const [receivedAmount, setReceivedAmount] = useState<number>(0);
-  const [paymentMethod, setPaymentMethod]   = useState<PaymentMethod>('especes');
+  const [lignesPaiement, setLignesPaiement] = useState<LignePaiement[]>([]);
+  const [modeEnCours, setModeEnCours]       = useState<PaymentMethod>('especes');
+  const [montantEnCours, setMontantEnCours] = useState<number>(0);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [showClientForm, setShowClientForm] = useState(false);
   const [newClient, setNewClient]           = useState({ nom: '', telephone: '' });
@@ -73,7 +83,6 @@ export default function POS() {
   const [lastSaleReference, setLastSaleReference] = useState('');
 
   const { items, addItem, removeItem, updateQuantity, changeUnite, overridePrice, total, clearCart } = useCartStore();
-  const { token } = useAuthStore();
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
   const receivedRef = useRef<HTMLInputElement>(null);
 
@@ -88,10 +97,10 @@ export default function POS() {
 
   // Focus automatique sur le montant reçu quand le modal s'ouvre en espèces
   useEffect(() => {
-    if (showPaymentModal && paymentMethod === 'especes') {
+    if (showPaymentModal && modeEnCours === 'especes') {
       setTimeout(() => receivedRef.current?.focus(), 100);
     }
-  }, [showPaymentModal, paymentMethod]);
+  }, [showPaymentModal, modeEnCours]);
 
   const fetchProducts = async () => {
     try {
@@ -131,12 +140,54 @@ export default function POS() {
 
   // ── Paiement ──────────────────────────────────────────────────────────────
 
-  const handlePayment = async () => {
-    if (paymentMethod === 'especes' && receivedAmount < total) {
-      toast.error('Le montant reçu est insuffisant'); return;
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+
+  const totalVerse = lignesPaiement.reduce((s, l) => s + l.montant, 0);
+  const resteAPayer = Math.max(0, round2(total - totalVerse));
+  const monnaieTotale = lignesPaiement
+    .filter(l => l.mode === 'especes')
+    .reduce((s, l) => s + ((l.montant_recu ?? 0) - l.montant), 0);
+
+  const ajouterLignePaiement = () => {
+    if (modeEnCours === 'dette' && !selectedClient) {
+      toast.error('Sélectionnez un client pour le paiement à crédit'); return;
     }
-    if (paymentMethod === 'dette' && !selectedClient) {
-      toast.error('Veuillez sélectionner un client'); return;
+    if (montantEnCours <= 0) {
+      toast.error('Montant invalide'); return;
+    }
+
+    if (modeEnCours === 'especes') {
+      const montantAffecte = Math.min(montantEnCours, resteAPayer > 0 ? resteAPayer : montantEnCours);
+      setLignesPaiement(l => [...l, {
+        id: crypto.randomUUID(),
+        mode: 'especes',
+        montant: montantAffecte,
+        montant_recu: montantEnCours,
+      }]);
+    } else {
+      if (montantEnCours > resteAPayer) {
+        toast.error(`Le montant dépasse le reste à payer (${fmt(resteAPayer)})`); return;
+      }
+      setLignesPaiement(l => [...l, {
+        id: crypto.randomUUID(),
+        mode: modeEnCours,
+        montant: montantEnCours,
+        client_id: modeEnCours === 'dette' ? selectedClient!.id : undefined,
+        client_nom: modeEnCours === 'dette' ? selectedClient!.nom : undefined,
+      }]);
+    }
+
+    setMontantEnCours(0);
+    setSelectedClient(null);
+    setClientSearch('');
+  };
+
+  const supprimerLignePaiement = (id: string) =>
+    setLignesPaiement(l => l.filter(x => x.id !== id));
+
+  const handlePayment = async () => {
+    if (resteAPayer > 0) {
+      toast.error(`Il reste ${fmt(resteAPayer)} à payer`); return;
     }
 
     setLoading(true);
@@ -153,14 +204,17 @@ export default function POS() {
             justification: i.isOverridden ? i.justification : undefined,
             pin: i.isOverridden ? i.pin : undefined,
           })),
-          moyen_paiement: paymentMethod,
-          montant_recu: paymentMethod === 'especes' ? receivedAmount : total,
-          client_id: paymentMethod === 'dette' && selectedClient ? selectedClient.id : null,
+          paiements: lignesPaiement.map(l => ({
+            mode: l.mode,
+            montant: l.mode === 'especes' ? undefined : l.montant,
+            montant_recu: l.mode === 'especes' ? l.montant_recu : undefined,
+            client_id: l.client_id,
+            reference_transaction: l.reference_transaction,
+          })),
         }),
       });
       const result = await res.json();
 
-      // Blocage caisse
       if (!result.success && result.code === 'CAISSE_BLOQUEE') {
         setShowPaymentModal(false);
         setBloquageCaisse(result as BloquageInfo);
@@ -171,12 +225,12 @@ export default function POS() {
         setLastSaleId(result.vente.id);
         setLastSaleReference(result.vente.reference);
 
-        const change = paymentMethod === 'especes' ? receivedAmount - total : 0;
-        if (paymentMethod === 'dette') {
+        const detteLine = lignesPaiement.find(l => l.mode === 'dette');
+        if (detteLine) {
           const solde = getSoldeDette(result.nouveau_solde_client);
-          toast.success(`Vente à crédit enregistrée ! Dette : ${fmt(solde)}`);
-        } else if (change > 0) {
-          toast.success(`Monnaie à rendre : ${fmt(change)}`);
+          toast.success(`Vente enregistrée ! Part à crédit — nouvelle dette : ${fmt(solde)}`);
+        } else if (monnaieTotale > 0) {
+          toast.success(`Monnaie à rendre : ${fmt(monnaieTotale)}`);
         } else {
           toast.success('Vente enregistrée avec succès !');
         }
@@ -201,8 +255,9 @@ export default function POS() {
   };
 
   const resetPaymentState = () => {
-    setReceivedAmount(0);
-    setPaymentMethod('especes');
+    setLignesPaiement([]);
+    setModeEnCours('especes');
+    setMontantEnCours(0);
     setSelectedClient(null);
     setClientSearch('');
     setShowClientForm(false);
@@ -215,23 +270,14 @@ export default function POS() {
     p.reference.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const monnaie        = paymentMethod === 'especes' ? receivedAmount - total : 0;
-  const paiementValide = paymentMethod !== 'especes' && paymentMethod !== 'dette'
-    ? true
-    : paymentMethod === 'especes'
-      ? receivedAmount >= total
-      : !!selectedClient;
-
-  const nbArticles = items.reduce((s, i) => s + i.quantity, 0);
-
   // ─── Rendu ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex gap-3 h-[calc(100vh-5rem)]">
+    <div className="flex flex-col lg:flex-row gap-3 h-auto lg:h-[calc(100vh-5rem)] lg:p-3">
 
       {/* ══ Colonne gauche : catalogue produits ════════════════════════════ */}
       <div className="flex-1 bg-white rounded-xl border border-gray-200
-                      flex flex-col overflow-hidden min-w-0">
+                      flex flex-col overflow-hidden min-w-0 h-[60vh] lg:h-auto">
 
         {/* Barre de recherche */}
         <div className="px-4 py-3 border-b border-gray-100 flex gap-2">
@@ -268,7 +314,7 @@ export default function POS() {
 
         {/* Grille produits */}
         <div className="flex-1 overflow-y-auto p-3">
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
             {filteredProducts.map(product => {
               const rupture  = product.stock === 0;
               const stockBas = !rupture && product.stock <= product.min_stock;
@@ -357,8 +403,8 @@ export default function POS() {
       </div>
 
       {/* ══ Colonne droite : panier ═════════════════════════════════════════ */}
-      <div className="w-[340px] shrink-0 bg-white rounded-xl border border-gray-200
-                      flex flex-col overflow-hidden">
+      <div className="w-full lg:w-[340px] shrink-0 bg-white rounded-xl border border-gray-200
+                      flex flex-col overflow-hidden h-[40vh] lg:h-auto">
 
         {/* En-tête panier */}
         <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
@@ -561,74 +607,145 @@ export default function POS() {
                 <span className="text-2xl font-medium text-gray-900">{fmt(total)}</span>
               </div>
 
-              {/* Méthodes de paiement */}
-              <div>
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
-                  Mode de paiement
-                </p>
-                <div className="grid grid-cols-2 gap-2">
-                  {PAYMENT_METHODS.map(pm => (
-                    <button
-                      key={pm.value}
-                      onClick={() => {
-                        setPaymentMethod(pm.value);
-                        setSelectedClient(null);
-                        setClientSearch('');
-                      }}
-                      className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border
-                                  text-sm font-medium transition-all
-                        ${paymentMethod === pm.value
-                          ? 'border-blue-500 bg-blue-50 text-blue-700'
-                          : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
-                        }`}
-                    >
-                      {pm.icon}
-                      {pm.label}
-                    </button>
-                  ))}
+              {/* Récap ventilation */}
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-gray-50 rounded-xl px-3 py-2">
+                  <p className="text-xs text-gray-400">Versé</p>
+                  <p className="text-lg font-medium text-gray-900">{fmt(totalVerse)}</p>
+                </div>
+                <div className={`rounded-xl px-3 py-2 ${resteAPayer > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
+                  <p className={`text-xs ${resteAPayer > 0 ? 'text-red-500' : 'text-green-600'}`}>Reste à payer</p>
+                  <p className={`text-lg font-medium ${resteAPayer > 0 ? 'text-red-600' : 'text-green-700'}`}>
+                    {fmt(resteAPayer)}
+                  </p>
                 </div>
               </div>
 
-              {/* Champ montant reçu (espèces) */}
-              {paymentMethod === 'especes' && (
-                <div>
-                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
-                    Montant reçu
-                  </p>
-                  <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-200
-                                  focus-within:border-blue-400 focus-within:bg-white transition-colors">
-                    <input
-                      ref={receivedRef}
-                      type="number"
-                      step="1"
-                      value={receivedAmount || ''}
-                      onChange={e => setReceivedAmount(parseFloat(e.target.value) || 0)}
-                      placeholder="0"
-                      className="w-full bg-transparent text-2xl font-medium text-gray-900
-                                 outline-none placeholder-gray-300"
-                    />
-                    <span className="text-xs text-gray-400">francs CFA</span>
-                  </div>
-
-                  {receivedAmount > 0 && receivedAmount >= total && (
-                    <div className="mt-2 flex items-center justify-between px-3 py-2
-                                    bg-green-50 border border-green-200 rounded-lg">
-                      <span className="text-sm text-green-700">Monnaie à rendre</span>
-                      <span className="font-medium text-green-700">{fmt(monnaie)}</span>
+              {/* Lignes de paiement déjà ajoutées */}
+              {lignesPaiement.length > 0 && (
+                <div className="space-y-1.5">
+                  {lignesPaiement.map(l => (
+                    <div key={l.id} className="flex items-center justify-between px-3 py-2
+                                                bg-gray-50 rounded-lg text-sm">
+                      <div className="flex items-center gap-2">
+                        {PAYMENT_METHODS.find(pm => pm.value === l.mode)?.icon}
+                        <span className="font-medium text-gray-700">
+                          {PAYMENT_METHODS.find(pm => pm.value === l.mode)?.label}
+                        </span>
+                        {l.client_nom && (
+                          <span className="text-xs text-gray-400">— {l.client_nom}</span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-gray-900">{fmt(l.montant)}</span>
+                        <button onClick={() => supprimerLignePaiement(l.id)}
+                                className="text-gray-300 hover:text-red-500 transition-colors">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
-                  )}
-                  {receivedAmount > 0 && receivedAmount < total && (
-                    <div className="mt-2 px-3 py-2 bg-red-50 border border-red-200
-                                    rounded-lg text-sm text-red-600">
-                      Il manque {fmt(total - receivedAmount)}
-                    </div>
-                  )}
+                  ))}
                 </div>
               )}
 
+              {/* Ajout d'une nouvelle ligne de paiement */}
+              {resteAPayer > 0 && (
+                <div className="border border-dashed border-gray-300 rounded-xl p-3 space-y-3">
+                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
+                    Ajouter un paiement
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PAYMENT_METHODS.map(pm => (
+                      <button
+                        key={pm.value}
+                        onClick={() => {
+                          setModeEnCours(pm.value);
+                          setSelectedClient(null);
+                          setClientSearch('');
+                          setMontantEnCours(pm.value === 'especes' ? 0 : resteAPayer);
+                        }}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border
+                                    text-sm font-medium transition-all
+                          ${modeEnCours === pm.value
+                            ? 'border-blue-500 bg-blue-50 text-blue-700'
+                            : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                          }`}
+                      >
+                        {pm.icon}
+                        {pm.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Montant (espèces = montant reçu, autres = montant affecté) */}
+                  {modeEnCours !== 'dette' && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
+                        {modeEnCours === 'especes' ? 'Montant reçu' : 'Montant'}
+                      </p>
+                      <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-200
+                                      focus-within:border-blue-400 focus-within:bg-white transition-colors">
+                        <input
+                          ref={receivedRef}
+                          type="number"
+                          step="1"
+                          value={montantEnCours || ''}
+                          onChange={e => setMontantEnCours(parseFloat(e.target.value) || 0)}
+                          placeholder="0"
+                          className="w-full bg-transparent text-2xl font-medium text-gray-900
+                                     outline-none placeholder-gray-300"
+                        />
+                        <span className="text-xs text-gray-400">francs CFA</span>
+                      </div>
+
+                      {modeEnCours === 'especes' && montantEnCours > 0 && (
+                        <div className="mt-2 flex items-center justify-between px-3 py-2
+                                        bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                          <span>
+                            {montantEnCours > resteAPayer ? 'Monnaie à rendre' : 'Affecté à la vente'}
+                          </span>
+                          <span className="font-medium">
+                            {montantEnCours > resteAPayer
+                              ? fmt(montantEnCours - resteAPayer)
+                              : fmt(montantEnCours)}
+                          </span>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={ajouterLignePaiement}
+                        disabled={montantEnCours <= 0}
+                        className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium
+                                  hover:bg-blue-700 transition-colors
+                                  disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                      >
+                        Ajouter ce paiement
+                      </button>
+                    </div>
+                  )}
+
               {/* Sélection client (dette) */}
-              {paymentMethod === 'dette' && (
+              {modeEnCours === 'dette' && (
                 <div className="space-y-3">
+                  <div>
+                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
+                      Montant à créditer
+                    </p>
+                    <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-200
+                                    focus-within:border-blue-400 focus-within:bg-white transition-colors">
+                      <input
+                        type="number"
+                        step="1"
+                        value={montantEnCours || ''}
+                        onChange={e => setMontantEnCours(parseFloat(e.target.value) || 0)}
+                        placeholder="0"
+                        className="w-full bg-transparent text-2xl font-medium text-gray-900
+                                   outline-none placeholder-gray-300"
+                      />
+                      <span className="text-xs text-gray-400">francs CFA</span>
+                    </div>
+                  </div>
+
                   <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
                     Client
                   </p>
@@ -709,6 +826,15 @@ export default function POS() {
                           </p>
                         </div>
                       </div>
+                      <button
+                        onClick={ajouterLignePaiement}
+                        disabled={!selectedClient || montantEnCours <= 0}
+                        className="w-full py-2.5 mt-3 bg-blue-600 text-white rounded-lg text-sm font-medium
+                                  hover:bg-blue-700 transition-colors
+                                  disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                      >
+                        Ajouter ce paiement
+                      </button>
                     </div>
                   )}
 
@@ -752,6 +878,10 @@ export default function POS() {
                       </div>
                     </div>
                   )}
+                    </div>
+
+                    
+                  )}
                 </div>
               )}
             </div>
@@ -768,7 +898,7 @@ export default function POS() {
               </button>
               <button
                 onClick={handlePayment}
-                disabled={loading || !paiementValide || items.length === 0}
+                disabled={loading || resteAPayer > 0 || lignesPaiement.length === 0 || items.length === 0}
                 className="flex-[2] py-2.5 bg-green-600 text-white rounded-lg text-sm
                            font-medium flex items-center justify-center gap-2
                            hover:bg-green-700 transition-colors
