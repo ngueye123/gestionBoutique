@@ -17,6 +17,9 @@ use App\Http\Controllers\DepenseController;
 use App\Http\Controllers\PinVerificationController;
 use App\Http\Controllers\SecurityPinController;
 use App\Http\Controllers\PriceOverrideController;
+use App\Http\Controllers\FideliteSettingController;
+use App\Http\Controllers\FideliteHistoriqueController;   
+
 // ============================================================
 // Routes publiques
 // ============================================================
@@ -136,4 +139,14 @@ Route::middleware(['jwt.custom'])->group(function () {
     Route::get('/price-overrides', [PriceOverrideController::class, 'index']);
     Route::post('/pos/verify-pin', [PinVerificationController::class, 'verify'])-> middleware('throttle:5,1');
     Route::post('/security-pin', [SecurityPinController::class, 'create_pin'])-> middleware('throttle:5,1');
+
+    // ── Fidélité ──────────────────────────────────────────────────────────
+    Route::prefix('fidelite')->group(function () {
+        Route::get('/config', [FideliteSettingController::class, 'show']);
+        Route::put('/config', [FideliteSettingController::class, 'update']);
+    });
+
+
+    Route::get('/clients/{client}/fidelite-historique', [FideliteHistoriqueController::class, 'index']);
+    Route::patch('/fidelite/historique/{id}', [FideliteHistoriqueController::class, 'toggleConsomme']);
 });

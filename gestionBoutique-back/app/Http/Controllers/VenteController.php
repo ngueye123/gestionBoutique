@@ -53,6 +53,7 @@ class VenteController extends Controller
     public function store(Request $request): JsonResponse
     {
        $validated = $request->validate([
+        'client_id'                              => 'nullable|integer|exists:clients,id',   // NEW
             'items'                              => 'required|array|min:1',
             'items.*.id'                         => 'required|integer|exists:products,id',
             'items.*.quantity'                   => 'required|numeric|min:0.001',
@@ -66,7 +67,6 @@ class VenteController extends Controller
             'paiements.*.montant'                      => 'required_unless:paiements.*.mode,especes|nullable|numeric|min:0.01',
             'paiements.*.montant_recu'                  => 'required_if:paiements.*.mode,especes|nullable|numeric|min:0.01',
             'paiements.*.reference_transaction'          => 'nullable|string|max:50',
-            'paiements.*.client_id'                       => 'required_if:paiements.*.mode,dette|nullable|integer|exists:clients,id',
         ]);
 
         try {
@@ -79,6 +79,7 @@ class VenteController extends Controller
                 'vente'                => $result['vente'],
                 'nouveau_solde_client' => $result['nouveau_solde_client'],
                 'caisse'               => $result['caisse'],
+                'fidelite'             => $result['fidelite'],
             ], 201);
 
         } catch (\RuntimeException $e) {

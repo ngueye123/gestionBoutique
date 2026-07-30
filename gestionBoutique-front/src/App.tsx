@@ -19,7 +19,8 @@ import Caisse from './pages/Caisse'
 import Depenses from './pages/Depenses'
 import VerifyEmployeEmail from './pages/VerifyEmployeEmail';
 import SecuritySettings from './pages/SecuritySettings';
- import PriceOverrides from './pages/PriceOverrides';
+import PriceOverrides from './pages/PriceOverrides';
+import FideliteSettings from './pages/FideliteSettings';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore(state => state.token)
@@ -158,11 +159,21 @@ export default function App() {
             }
           />
 
+          {/* Paramètres fidélité — Patrons et admin*/}
+          <Route
+            path="parametres-fidelite"
+            element={
+              <RoleGuard requireEmployeeAdmin>
+                <FideliteSettings />
+              </RoleGuard>
+            }
+          />
+
           {/* Dépenses — Patrons uniquement */}
           <Route
             path="depenses"
             element={
-              <RoleGuard requirePatron>
+              <RoleGuard allowedRoles={['patron', 'admin', 'vendeur']}>
                 <Depenses />
               </RoleGuard>
             }
@@ -171,7 +182,7 @@ export default function App() {
           <Route
             path="ajustements-prix"
             element={
-              <RoleGuard requirePatron>
+              <RoleGuard requireEmployeeAdmin>
                 <PriceOverrides />
               </RoleGuard>
             }

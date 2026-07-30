@@ -4,10 +4,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Search, ShoppingCart, Plus, Minus, X,
   CheckCircle, FileText, Trash2, CreditCard,
-  Smartphone, Banknote, Clock, Pencil,
+  Smartphone, Banknote, Clock, Pencil, Gift, User,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { Product, Client } from '../types';
+import { Product, Client, FideliteConfig } from '../types';
 import { useCartStore } from '../store/cartStore';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { InvoiceButton } from '../components/InvoiceButton';
@@ -22,20 +22,22 @@ type PaymentMethod = 'especes' | 'wave' | 'orange_money' | 'dette';
 interface LignePaiement {
   id: string;
   mode: PaymentMethod;
-  montant: number;           // montant affecté à la vente
-  montant_recu?: number;     // espèces uniquement
-  client_id?: number;
-  client_nom?: string;       // affichage uniquement
+  montant: number;
+  montant_recu?: number;
   reference_transaction?: string;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const fmt = (n: number) =>
-  Math.round(n).toLocaleString('fr-FR') + ' F';
+const fmt = (n: number) => Math.round(n).toLocaleString('fr-FR') + ' F';
 
 const getSoldeDette = (solde: any): number => {
   const parsed = parseFloat(String(solde || 0));
+  return isNaN(parsed) ? 0 : parsed;
+};
+
+const getSoldePoints = (solde: any): number => {
+  const parsed = parseInt(String(solde || 0), 10);
   return isNaN(parsed) ? 0 : parsed;
 };
 
@@ -44,16 +46,11 @@ const unitLabel = (type: Product['unit_type'], unit: string) => UNIT_CONFIG[type
 
 // ─── Config méthodes de paiement ──────────────────────────────────────────────
 
-const PAYMENT_METHODS: Array<{
-  value: PaymentMethod;
-  label: string;
-  icon: React.ReactNode;
-  color: string;
-}> = [
-  { value: 'especes',      label: 'Espèces',      icon: <Banknote className="w-4 h-4" />,    color: '#16a34a' },
-  { value: 'wave',         label: 'Wave',          icon: <Smartphone className="w-4 h-4" />,  color: '#2563eb' },
-  { value: 'orange_money', label: 'Orange Money',  icon: <CreditCard className="w-4 h-4" />,  color: '#ea580c' },
-  { value: 'dette',        label: 'À crédit',      icon: <Clock className="w-4 h-4" />,       color: '#7c3aed' },
+const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string; icon: React.ReactNode }> = [
+  { value: 'especes',      label: 'Espèces',      icon: <Banknote className="w-4 h-4" /> },
+  { value: 'wave',         label: 'Wave',          icon: <Smartphone className="w-4 h-4" /> },
+  { value: 'orange_money', label: 'Orange Money',  icon: <CreditCard className="w-4 h-4" /> },
+  { value: 'dette',        label: 'À crédit',      icon: <Clock className="w-4 h-4" /> },
 ];
 
 // ─── Composant principal ──────────────────────────────────────────────────────
@@ -71,6 +68,9 @@ export default function POS() {
   const [newClient, setNewClient]           = useState({ nom: '', telephone: '' });
   const [loading, setLoading]               = useState(false);
 
+  // Fidélité
+  const [fideliteConfig, setFideliteConfig] = useState<FideliteConfig | null>(null);
+
   // Modals
   const [showPaymentModal, setShowPaymentModal]         = useState(false);
   const [showSuccessModal, setShowSuccessModal]         = useState(false);
@@ -81,6 +81,7 @@ export default function POS() {
   // Infos dernière vente
   const [lastSaleId, setLastSaleId]               = useState<number | null>(null);
   const [lastSaleReference, setLastSaleReference] = useState('');
+  const [lastSalePoints, setLastSalePoints]       = useState<number>(0);
 
   const { items, addItem, removeItem, updateQuantity, changeUnite, overridePrice, total, clearCart } = useCartStore();
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -89,13 +90,13 @@ export default function POS() {
   // ── Chargements ───────────────────────────────────────────────────────────
 
   useEffect(() => { fetchProducts(); }, []);
+  useEffect(() => { fetchFideliteConfig(); }, []);
 
   useEffect(() => {
-    if (clientSearch.length >= 2) searchClients();
+    if (clientSearch.length >= 2 && !selectedClient) searchClients();
     else setClients([]);
-  }, [clientSearch]);
+  }, [clientSearch, selectedClient]);
 
-  // Focus automatique sur le montant reçu quand le modal s'ouvre en espèces
   useEffect(() => {
     if (showPaymentModal && modeEnCours === 'especes') {
       setTimeout(() => receivedRef.current?.focus(), 100);
@@ -108,6 +109,14 @@ export default function POS() {
       const data = await res.json();
       if (data.success) setProducts(data.products);
     } catch { toast.error('Erreur lors du chargement des produits'); }
+  };
+
+  const fetchFideliteConfig = async () => {
+    try {
+      const res  = await fetchWithAuth(`${API_URL}/fidelite/config`);
+      const data = await res.json();
+      if (data.success) setFideliteConfig(data.config);
+    } catch { /* dégradation silencieuse */ }
   };
 
   const searchClients = async () => {
@@ -134,6 +143,7 @@ export default function POS() {
         setSelectedClient(result.client);
         setShowClientForm(false);
         setNewClient({ nom: '', telephone: '' });
+        setClientSearch('');
       } else { toast.error(result.message); }
     } catch { toast.error('Erreur lors de la création du client'); }
   };
@@ -147,6 +157,15 @@ export default function POS() {
   const monnaieTotale = lignesPaiement
     .filter(l => l.mode === 'especes')
     .reduce((s, l) => s + ((l.montant_recu ?? 0) - l.montant), 0);
+
+  // Fidélité : part comptant déjà affectée — ne compte que si un client est rattaché
+  const montantComptantAffecte = lignesPaiement
+    .filter(l => l.mode !== 'dette')
+    .reduce((s, l) => s + l.montant, 0);
+
+  const pointsAGagner = (selectedClient && fideliteConfig && fideliteConfig.montant_tranche > 0)
+    ? Math.floor(montantComptantAffecte / fideliteConfig.montant_tranche) * fideliteConfig.points_accordes
+    : 0;
 
   const ajouterLignePaiement = () => {
     if (modeEnCours === 'dette' && !selectedClient) {
@@ -172,14 +191,10 @@ export default function POS() {
         id: crypto.randomUUID(),
         mode: modeEnCours,
         montant: montantEnCours,
-        client_id: modeEnCours === 'dette' ? selectedClient!.id : undefined,
-        client_nom: modeEnCours === 'dette' ? selectedClient!.nom : undefined,
       }]);
     }
 
     setMontantEnCours(0);
-    setSelectedClient(null);
-    setClientSearch('');
   };
 
   const supprimerLignePaiement = (id: string) =>
@@ -196,6 +211,7 @@ export default function POS() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          client_id: selectedClient?.id, // NEW — client désormais au niveau de la vente, optionnel
           items: items.map(i => ({
             id: parseInt(i.id),
             quantity: i.quantity,
@@ -208,7 +224,6 @@ export default function POS() {
             mode: l.mode,
             montant: l.mode === 'especes' ? undefined : l.montant,
             montant_recu: l.mode === 'especes' ? l.montant_recu : undefined,
-            client_id: l.client_id,
             reference_transaction: l.reference_transaction,
           })),
         }),
@@ -224,15 +239,21 @@ export default function POS() {
       if (result.success) {
         setLastSaleId(result.vente.id);
         setLastSaleReference(result.vente.reference);
+        setLastSalePoints(result.fidelite?.points ?? 0);
 
         const detteLine = lignesPaiement.find(l => l.mode === 'dette');
+        const pts = result.fidelite?.points ?? 0;
+
         if (detteLine) {
           const solde = getSoldeDette(result.nouveau_solde_client);
-          toast.success(`Vente enregistrée ! Part à crédit — nouvelle dette : ${fmt(solde)}`);
+          toast.success(
+            `Vente enregistrée ! Part à crédit — nouvelle dette : ${fmt(solde)}` +
+            (pts > 0 ? ` · +${pts} pts fidélité` : '')
+          );
         } else if (monnaieTotale > 0) {
-          toast.success(`Monnaie à rendre : ${fmt(monnaieTotale)}`);
+          toast.success(`Monnaie à rendre : ${fmt(monnaieTotale)}` + (pts > 0 ? ` · +${pts} pts fidélité` : ''));
         } else {
-          toast.success('Vente enregistrée avec succès !');
+          toast.success('Vente enregistrée avec succès !' + (pts > 0 ? ` +${pts} pts fidélité` : ''));
         }
 
         if (result.caisse?.attention) {
@@ -279,7 +300,6 @@ export default function POS() {
       <div className="flex-1 bg-white rounded-xl border border-gray-200
                       flex flex-col overflow-hidden min-w-0 h-[60vh] lg:h-auto">
 
-        {/* Barre de recherche */}
         <div className="px-4 py-3 border-b border-gray-100 flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -304,7 +324,6 @@ export default function POS() {
           </button>
         </div>
 
-        {/* Compteur résultats */}
         <div className="px-4 py-2 border-b border-gray-50">
           <span className="text-xs text-gray-400">
             {filteredProducts.length} produit{filteredProducts.length > 1 ? 's' : ''}
@@ -312,7 +331,6 @@ export default function POS() {
           </span>
         </div>
 
-        {/* Grille produits */}
         <div className="flex-1 overflow-y-auto p-3">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
             {filteredProducts.map(product => {
@@ -344,22 +362,18 @@ export default function POS() {
                     }
                   `}
                 >
-                  {/* Badge quantité dans le panier */}
                   {inCart && (
                     <span className="absolute top-2 right-2 min-w-5 h-5 px-1 bg-blue-600 text-white
                                      text-xs rounded-full flex items-center justify-center font-medium">
                       {formatQty(inCart.quantity)}
                     </span>
                   )}
-
-                  {/* Badge rupture */}
                   {rupture && (
                     <span className="absolute top-2 right-2 text-xs bg-red-100 text-red-700
                                      px-1.5 py-0.5 rounded-full">
                       Rupture
                     </span>
                   )}
-
                   <p className="text-sm font-medium text-gray-900 truncate pr-5 leading-tight">
                     {product.name}
                   </p>
@@ -373,8 +387,6 @@ export default function POS() {
                   <p className={`text-xs mt-0.5 ${stockBas ? 'text-orange-600 font-medium' : 'text-gray-400'}`}>
                     Stock : {stockDisplay} {unitLabel(product.unit_type, product.unit_reference)}{stockBas ? ' ⚠' : ''}
                   </p>
-
-                  {/* Bouton d'ajustement de prix, visible au survol */}
                   {!rupture && (
                     <button
                       onClick={e => { e.stopPropagation(); setOverrideProduct(product); }}
@@ -406,7 +418,6 @@ export default function POS() {
       <div className="w-full lg:w-[340px] shrink-0 bg-white rounded-xl border border-gray-200
                       flex flex-col overflow-hidden h-[40vh] lg:h-auto">
 
-        {/* En-tête panier */}
         <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <ShoppingCart className="w-5 h-5 text-gray-600" />
@@ -429,7 +440,6 @@ export default function POS() {
           )}
         </div>
 
-        {/* Liste articles */}
         <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-2">
           {items.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center
@@ -468,7 +478,6 @@ export default function POS() {
                     >
                       <Minus className="w-3 h-3" />
                     </button>
-
                     <input
                       type="number"
                       inputMode="numeric"
@@ -477,32 +486,24 @@ export default function POS() {
                       value={item.quantity}
                       onChange={e => {
                         const raw = e.target.value;
-
-                        // Permet de vider le champ temporairement pendant la saisie
-                        // sans forcer immédiatement une valeur (sinon impossible de retaper)
                         if (raw === '') return;
-
                         const parsed = parseInt(raw, 10);
                         if (isNaN(parsed)) return;
-
-                        // On clamp entre 1 et le stock disponible
                         const clamped = Math.min(Math.max(parsed, 1), item.stock);
                         updateQuantity(item.id, clamped);
                       }}
                       onBlur={e => {
-                        // Si l'utilisateur laisse le champ vide ou à 0 en sortant, on remet à 1
                         const parsed = parseInt(e.target.value, 10);
                         if (isNaN(parsed) || parsed < 1) {
                           updateQuantity(item.id, 1);
                         }
                       }}
-                      onFocus={e => e.target.select()} // sélectionne tout le texte au focus, pratique pour retaper vite
+                      onFocus={e => e.target.select()}
                       className="w-12 text-center text-sm font-medium border border-gray-200 rounded-md
                                 py-0.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none
                                 [&::-webkit-inner-spin-button]:appearance-none
                                 [&::-webkit-outer-spin-button]:appearance-none"
                     />
-
                     <button
                       onClick={() => updateQuantity(item.id, item.quantity + 1)}
                       disabled={item.quantity >= item.stock}
@@ -558,19 +559,13 @@ export default function POS() {
               </div>
             ))
           )}
-          
         </div>
 
-        {/* Pied de panier : total + paiement */}
         <div className="border-t border-gray-100 p-3 space-y-3">
-
-          {/* Total */}
           <div className="flex items-baseline justify-between px-1">
             <span className="text-sm text-gray-500">Total</span>
             <span className="text-2xl font-medium text-gray-900">{fmt(total)}</span>
           </div>
-
-          {/* Bouton paiement */}
           <button
             onClick={() => setShowPaymentModal(true)}
             disabled={items.length === 0}
@@ -590,7 +585,6 @@ export default function POS() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-md shadow-xl overflow-hidden">
 
-            {/* Header modal */}
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h2 className="font-medium text-gray-900">Finaliser la vente</h2>
               <button onClick={() => { setShowPaymentModal(false); resetPaymentState(); }}
@@ -607,7 +601,6 @@ export default function POS() {
                 <span className="text-2xl font-medium text-gray-900">{fmt(total)}</span>
               </div>
 
-              {/* Récap ventilation */}
               <div className="grid grid-cols-2 gap-2">
                 <div className="bg-gray-50 rounded-xl px-3 py-2">
                   <p className="text-xs text-gray-400">Versé</p>
@@ -621,6 +614,144 @@ export default function POS() {
                 </div>
               </div>
 
+              {/* ══ NEW : Bloc client — toujours visible, optionnel, indépendant du mode ══ */}
+              <div className="border border-gray-200 rounded-xl p-3 space-y-2.5">
+                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5" />
+                  Client (optionnel — pour cumuler des points de fidélité)
+                </p>
+
+                {!selectedClient && !showClientForm && (
+                  <>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        value={clientSearch}
+                        onChange={e => setClientSearch(e.target.value)}
+                        placeholder="Nom ou téléphone..."
+                        className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg
+                                   text-sm focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    {clients.length > 0 && (
+                      <div className="border border-gray-200 rounded-lg overflow-hidden">
+                        {clients.map(client => {
+                          const dette = getSoldeDette(client.solde_dette);
+                          return (
+                            <button
+                              key={client.id}
+                              onClick={() => {
+                                setSelectedClient(client);
+                                setClients([]);
+                                setClientSearch('');
+                              }}
+                              className="w-full px-3 py-2.5 text-left hover:bg-gray-50
+                                         flex justify-between items-center border-b
+                                         border-gray-100 last:border-b-0"
+                            >
+                              <div>
+                                <p className="text-sm font-medium text-gray-900">{client.nom}</p>
+                                <p className="text-xs text-gray-400">{client.telephone}</p>
+                              </div>
+                              <div className="text-right">
+                                <span className={`block text-sm font-medium ${dette > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                  {fmt(dette)}
+                                </span>
+                                <span className="block text-[11px] text-purple-500">
+                                  {getSoldePoints(client.solde_points)} pts
+                                </span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <button
+                      onClick={() => setShowClientForm(true)}
+                      className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg
+                                 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600
+                                 flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Créer un nouveau client
+                    </button>
+                  </>
+                )}
+
+                {showClientForm && (
+                  <div className="space-y-2.5">
+                    <input type="text" placeholder="Nom complet"
+                           value={newClient.nom}
+                           onChange={e => setNewClient(c => ({ ...c, nom: e.target.value }))}
+                           className="w-full px-3 py-2 border border-gray-200 rounded-lg
+                                      text-sm focus:ring-2 focus:ring-blue-500" />
+                    <input type="tel" placeholder="Téléphone"
+                           value={newClient.telephone}
+                           onChange={e => setNewClient(c => ({ ...c, telephone: e.target.value }))}
+                           className="w-full px-3 py-2 border border-gray-200 rounded-lg
+                                      text-sm focus:ring-2 focus:ring-blue-500" />
+                    <div className="flex gap-2">
+                      <button onClick={() => { setShowClientForm(false); setNewClient({ nom: '', telephone: '' }); }}
+                              className="flex-1 py-2 border border-gray-200 rounded-lg
+                                         text-sm text-gray-600 hover:bg-gray-50">
+                        Annuler
+                      </button>
+                      <button onClick={createClient}
+                              className="flex-1 py-2 bg-blue-600 text-white rounded-lg
+                                         text-sm hover:bg-blue-700">
+                        Créer
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {selectedClient && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 bg-blue-200 rounded-full flex items-center
+                                        justify-center text-blue-700 text-sm font-medium">
+                          {selectedClient.nom.charAt(0).toUpperCase()}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{selectedClient.nom}</p>
+                          <p className="text-xs text-gray-500">{selectedClient.telephone}</p>
+                          {selectedClient.numero_carte && (
+                            <p className="text-xs text-gray-400">Carte {selectedClient.numero_carte}</p>
+                          )}
+                        </div>
+                      </div>
+                      <button onClick={() => setSelectedClient(null)}
+                              className="text-gray-400 hover:text-red-500 transition-colors">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <div className="mt-2.5 pt-2.5 border-t border-blue-200 grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <span className="text-gray-500">Dette actuelle</span>
+                        <p className="font-medium text-red-600">{fmt(getSoldeDette(selectedClient.solde_dette))}</p>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Points fidélité</span>
+                        <p className="font-medium text-purple-600">{getSoldePoints(selectedClient.solde_points)} pts</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Bandeau points fidélité estimés */}
+              {pointsAGagner > 0 && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-200
+                                rounded-lg text-sm text-purple-700">
+                  <Gift className="w-4 h-4 shrink-0" />
+                  <span>Points fidélité à gagner : <span className="font-semibold">{pointsAGagner} pts</span></span>
+                </div>
+              )}
+
               {/* Lignes de paiement déjà ajoutées */}
               {lignesPaiement.length > 0 && (
                 <div className="space-y-1.5">
@@ -632,9 +763,6 @@ export default function POS() {
                         <span className="font-medium text-gray-700">
                           {PAYMENT_METHODS.find(pm => pm.value === l.mode)?.label}
                         </span>
-                        {l.client_nom && (
-                          <span className="text-xs text-gray-400">— {l.client_nom}</span>
-                        )}
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-gray-900">{fmt(l.montant)}</span>
@@ -660,8 +788,6 @@ export default function POS() {
                         key={pm.value}
                         onClick={() => {
                           setModeEnCours(pm.value);
-                          setSelectedClient(null);
-                          setClientSearch('');
                           setMontantEnCours(pm.value === 'especes' ? 0 : resteAPayer);
                         }}
                         className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border
@@ -677,63 +803,20 @@ export default function POS() {
                     ))}
                   </div>
 
-                  {/* Montant (espèces = montant reçu, autres = montant affecté) */}
-                  {modeEnCours !== 'dette' && (
-                    <div>
-                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
-                        {modeEnCours === 'especes' ? 'Montant reçu' : 'Montant'}
-                      </p>
-                      <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-200
-                                      focus-within:border-blue-400 focus-within:bg-white transition-colors">
-                        <input
-                          ref={receivedRef}
-                          type="number"
-                          step="1"
-                          value={montantEnCours || ''}
-                          onChange={e => setMontantEnCours(parseFloat(e.target.value) || 0)}
-                          placeholder="0"
-                          className="w-full bg-transparent text-2xl font-medium text-gray-900
-                                     outline-none placeholder-gray-300"
-                        />
-                        <span className="text-xs text-gray-400">francs CFA</span>
-                      </div>
-
-                      {modeEnCours === 'especes' && montantEnCours > 0 && (
-                        <div className="mt-2 flex items-center justify-between px-3 py-2
-                                        bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
-                          <span>
-                            {montantEnCours > resteAPayer ? 'Monnaie à rendre' : 'Affecté à la vente'}
-                          </span>
-                          <span className="font-medium">
-                            {montantEnCours > resteAPayer
-                              ? fmt(montantEnCours - resteAPayer)
-                              : fmt(montantEnCours)}
-                          </span>
-                        </div>
-                      )}
-
-                      <button
-                        onClick={ajouterLignePaiement}
-                        disabled={montantEnCours <= 0}
-                        className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium
-                                  hover:bg-blue-700 transition-colors
-                                  disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
-                      >
-                        Ajouter ce paiement
-                      </button>
-                    </div>
+                  {modeEnCours === 'dette' && !selectedClient && (
+                    <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      Sélectionnez un client ci-dessus pour un paiement à crédit
+                    </p>
                   )}
 
-              {/* Sélection client (dette) */}
-              {modeEnCours === 'dette' && (
-                <div className="space-y-3">
                   <div>
                     <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
-                      Montant à créditer
+                      {modeEnCours === 'especes' ? 'Montant reçu' : 'Montant'}
                     </p>
                     <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-200
                                     focus-within:border-blue-400 focus-within:bg-white transition-colors">
                       <input
+                        ref={receivedRef}
                         type="number"
                         step="1"
                         value={montantEnCours || ''}
@@ -744,149 +827,35 @@ export default function POS() {
                       />
                       <span className="text-xs text-gray-400">francs CFA</span>
                     </div>
-                  </div>
 
-                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-                    Client
-                  </p>
-
-                  {/* Recherche client */}
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <input
-                      type="text"
-                      value={clientSearch}
-                      onChange={e => setClientSearch(e.target.value)}
-                      placeholder="Nom ou téléphone..."
-                      className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg
-                                 text-sm focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-
-                  {/* Résultats recherche */}
-                  {clients.length > 0 && !selectedClient && (
-                    <div className="border border-gray-200 rounded-lg overflow-hidden">
-                      {clients.map(client => {
-                        const dette = getSoldeDette(client.solde_dette);
-                        return (
-                          <button
-                            key={client.id}
-                            onClick={() => {
-                              setSelectedClient(client);
-                              setClients([]);
-                              setClientSearch(client.nom);
-                            }}
-                            className="w-full px-3 py-2.5 text-left hover:bg-gray-50
-                                       flex justify-between items-center border-b
-                                       border-gray-100 last:border-b-0"
-                          >
-                            <div>
-                              <p className="text-sm font-medium text-gray-900">{client.nom}</p>
-                              <p className="text-xs text-gray-400">{client.telephone}</p>
-                            </div>
-                            <span className={`text-sm font-medium ${dette > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                              {fmt(dette)}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-
-                  {/* Client sélectionné */}
-                  {selectedClient && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 bg-blue-200 rounded-full flex items-center
-                                          justify-center text-blue-700 text-sm font-medium">
-                            {selectedClient.nom.charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">{selectedClient.nom}</p>
-                            <p className="text-xs text-gray-500">{selectedClient.telephone}</p>
-                          </div>
-                        </div>
-                        <button onClick={() => { setSelectedClient(null); setClientSearch(''); }}
-                                className="text-gray-400 hover:text-red-500 transition-colors">
-                          <X className="w-4 h-4" />
-                        </button>
+                    {modeEnCours === 'especes' && montantEnCours > 0 && (
+                      <div className="mt-2 flex items-center justify-between px-3 py-2
+                                      bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                        <span>
+                          {montantEnCours > resteAPayer ? 'Monnaie à rendre' : 'Affecté à la vente'}
+                        </span>
+                        <span className="font-medium">
+                          {montantEnCours > resteAPayer
+                            ? fmt(montantEnCours - resteAPayer)
+                            : fmt(montantEnCours)}
+                        </span>
                       </div>
-                      <div className="mt-2.5 pt-2.5 border-t border-blue-200 grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-gray-500">Dette actuelle</span>
-                          <p className="font-medium text-red-600">
-                            {fmt(getSoldeDette(selectedClient.solde_dette))}
-                          </p>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Nouvelle dette</span>
-                          <p className="font-medium text-orange-600">
-                            {fmt(getSoldeDette(selectedClient.solde_dette) + total)}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={ajouterLignePaiement}
-                        disabled={!selectedClient || montantEnCours <= 0}
-                        className="w-full py-2.5 mt-3 bg-blue-600 text-white rounded-lg text-sm font-medium
-                                  hover:bg-blue-700 transition-colors
-                                  disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
-                      >
-                        Ajouter ce paiement
-                      </button>
-                    </div>
-                  )}
+                    )}
 
-                  {/* Créer un nouveau client */}
-                  {!selectedClient && !showClientForm && (
                     <button
-                      onClick={() => setShowClientForm(true)}
-                      className="w-full py-2.5 border-2 border-dashed border-gray-300 rounded-lg
-                                 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600
-                                 flex items-center justify-center gap-2 transition-colors"
+                      onClick={ajouterLignePaiement}
+                      disabled={montantEnCours <= 0 || (modeEnCours === 'dette' && !selectedClient)}
+                      className="w-full py-2.5 mt-3 bg-blue-600 text-white rounded-lg text-sm font-medium
+                                hover:bg-blue-700 transition-colors
+                                disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
                     >
-                      <Plus className="w-4 h-4" />
-                      Créer un nouveau client
+                      Ajouter ce paiement
                     </button>
-                  )}
-
-                  {showClientForm && (
-                    <div className="border border-gray-200 rounded-xl p-3 space-y-2.5">
-                      <p className="text-sm font-medium text-gray-700">Nouveau client</p>
-                      <input type="text" placeholder="Nom complet"
-                             value={newClient.nom}
-                             onChange={e => setNewClient(c => ({ ...c, nom: e.target.value }))}
-                             className="w-full px-3 py-2 border border-gray-200 rounded-lg
-                                        text-sm focus:ring-2 focus:ring-blue-500" />
-                      <input type="tel" placeholder="Téléphone"
-                             value={newClient.telephone}
-                             onChange={e => setNewClient(c => ({ ...c, telephone: e.target.value }))}
-                             className="w-full px-3 py-2 border border-gray-200 rounded-lg
-                                        text-sm focus:ring-2 focus:ring-blue-500" />
-                      <div className="flex gap-2">
-                        <button onClick={() => { setShowClientForm(false); setNewClient({ nom: '', telephone: '' }); }}
-                                className="flex-1 py-2 border border-gray-200 rounded-lg
-                                           text-sm text-gray-600 hover:bg-gray-50">
-                          Annuler
-                        </button>
-                        <button onClick={createClient}
-                                className="flex-1 py-2 bg-blue-600 text-white rounded-lg
-                                           text-sm hover:bg-blue-700">
-                          Créer
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                    </div>
-
-                    
-                  )}
+                  </div>
                 </div>
               )}
             </div>
 
-            {/* Footer modal : boutons action */}
             <div className="px-5 py-4 border-t border-gray-100 flex gap-2">
               <button
                 onClick={() => { setShowPaymentModal(false); resetPaymentState(); }}
@@ -923,10 +892,17 @@ export default function POS() {
               <CheckCircle className="w-9 h-9 text-green-600" />
             </div>
             <h2 className="text-xl font-medium text-gray-900 mb-1">Vente enregistrée !</h2>
-            <p className="text-sm text-gray-500 mb-6">
+            <p className="text-sm text-gray-500 mb-1">
               Référence :{' '}
               <span className="font-mono font-medium text-gray-700">{lastSaleReference}</span>
             </p>
+            {lastSalePoints > 0 && (
+              <p className="text-sm text-purple-600 mb-6 flex items-center justify-center gap-1">
+                <Gift className="w-4 h-4" />
+                +{lastSalePoints} points fidélité crédités
+              </p>
+            )}
+            {lastSalePoints === 0 && <div className="mb-6" />}
             <div className="space-y-2">
               <InvoiceButton
                 venteId={lastSaleId}
@@ -934,7 +910,12 @@ export default function POS() {
                 variant="primary"
               />
               <button
-                onClick={() => { setShowSuccessModal(false); setLastSaleId(null); setLastSaleReference(''); }}
+                onClick={() => {
+                  setShowSuccessModal(false);
+                  setLastSaleId(null);
+                  setLastSaleReference('');
+                  setLastSalePoints(0);
+                }}
                 className="w-full py-2.5 border border-gray-200 rounded-lg text-sm
                            text-gray-600 hover:bg-gray-50 transition-colors"
               >
@@ -945,14 +926,12 @@ export default function POS() {
         </div>
       )}
 
-      {/* ══ Modal recherche factures ═════════════════════════════════════════ */}
       {showInvoiceSearchModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <InvoiceSearch onClose={() => setShowInvoiceSearchModal(false)} />
         </div>
       )}
 
-      {/* ══ Modal blocage caisse ═════════════════════════════════════════════ */}
       {bloquageCaisse && (
         <CaisseBloqueeModal
           bloquage={bloquageCaisse}
@@ -961,7 +940,6 @@ export default function POS() {
         />
       )}
 
-      {/* ══ Modal ajustement de prix ══════════════════════════════════════════ */}
       {overrideProduct && (
         <PriceOverrideModal
           productName={overrideProduct.name}

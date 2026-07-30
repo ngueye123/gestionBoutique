@@ -47,8 +47,10 @@ export interface Client {
   id: number
   nom: string
   telephone: string
-  utilisateur_id: number
   solde_dette: number
+  numero_carte?: string | null 
+  utilisateur_id: number
+  solde_points?: number 
   created_at: string
   updated_at: string
   remboursements?: Remboursement[]
@@ -143,6 +145,31 @@ export interface RemboursementHistoryResponse {
   client: Client
   remboursements: Remboursement[]
   total_rembourse: number
+}
+
+export interface FideliteConfig {
+  utilisateur_id: number
+  montant_tranche: number
+  points_accordes: number
+}
+
+export interface FideliteInfo {
+  points: number
+  solde_avant: number
+  solde_apres: number
+  mouvement_id: number | null
+}
+
+export interface FideliteHistorique {
+  id: number
+  client_id: number
+  mois: number
+  annee: number
+  montant_achat_total: number
+  points_total: number
+  est_consomme: boolean
+  consomme_par?: number | null
+  consomme_at?: string | null
 }
 
 // ========== TYPES DASHBOARD ==========

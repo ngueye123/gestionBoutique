@@ -219,6 +219,7 @@ export default function Clients() {
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">carte</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dette actuelle</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
@@ -244,6 +245,13 @@ export default function Clients() {
                       {client.telephone}
                     </div>
                   </td>
+
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center text-sm text-gray-600">
+                      {client.numero_carte || 'N/A'}
+                    </div>
+                  </td>
+                  
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                       soldeDette === 0
@@ -309,6 +317,10 @@ export default function Clients() {
                     <div className="flex items-center text-xs text-gray-600 mt-1">
                       <Phone className="w-3 h-3 mr-1" />
                       {client.telephone}
+                    </div>
+                    <div className="flex items-center text-xs text-gray-600 mt-1">
+                      <span className="font-semibold">Carte:</span>
+                      <span className="ml-1">{client.numero_carte || 'N/A'}</span>
                     </div>
                   </div>
                 </div>
@@ -391,6 +403,8 @@ export default function Clients() {
                   placeholder="Ex: 0612345678"
                 />
               </div>
+
+              
 
               <div className="flex justify-end space-x-2 pt-4">
                 <button

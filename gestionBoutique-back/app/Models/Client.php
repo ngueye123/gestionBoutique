@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-
+use Illuminate\Support\Str;
 class Client extends Model
 {
     protected $table = 'clients';
@@ -13,8 +13,11 @@ class Client extends Model
     protected $fillable = [
         'nom',
         'telephone',
+        'numero_carte',  
+        'solde_points',
         'utilisateur_id',
         'solde_dette',
+        
     ];
 
     protected $casts = [
@@ -60,6 +63,60 @@ class Client extends Model
     {
         $nouveauSolde = max(0, $this->solde_dette - $montant);
         $this->update(['solde_dette' => $nouveauSolde]);
+    }
+
+    /**
+     * Crédite les points de fidélité sur le solde du client.
+     */
+    public function crediterPoints(int $points): void
+    {
+        if ($points > 0) {
+            $this->increment('solde_points', $points);
+        }
+    }
+
+    /**
+     * Génère un numéro de carte fidélité si absent (FID-{id}).
+     */
+    public function genererNumeroCarteSiAbsent(): void
+    {
+        if (empty($this->numero_carte)) {
+            $this->update(['numero_carte' => 'FID-' . str_pad((string) $this->id, 6, '0', STR_PAD_LEFT)]);
+        }
+    }
+
+    protected static function booted()
+    {
+        static::created(function (Client $client) {
+            if (empty($client->numero_carte)) {
+                
+                // 1. Extraire les 3 premières lettres du nom
+                // Str::slug enlève les accents et espaces, Str::upper met en majuscule
+                $nomPropre = Str::upper(substr(Str::slug($client->nom, ''), 0, 3));
+                
+                // Sécurité : si le nom fait moins de 3 lettres (ex: "Ly"), on comble avec des "X"
+                $prefixNom = str_pad($nomPropre, 3, 'X');
+
+                // 2. Les 2 derniers chiffres du téléphone
+                $finTelephone = substr($client->telephone, -2);
+                // Sécurité : si le téléphone est absent ou trop court, on met "00"
+                $finTelephone = str_pad($finTelephone, 2, '0', STR_PAD_LEFT);
+
+                // 3. L'ID du client formaté sur 4 chiffres (ex: 0042)
+                $idFormat = str_pad((string) $client->id, 4, '0', STR_PAD_LEFT);
+
+                // 4. Assemblage final
+                $client->numero_carte = "{$prefixNom}-{$finTelephone}-{$idFormat}";
+                
+                // Sauvegarde de la modification
+                $client->save();
+            }
+        });
+    }
+
+    public function fideliteHistoriques(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(FideliteHistorique::class);
     }
 
     /**

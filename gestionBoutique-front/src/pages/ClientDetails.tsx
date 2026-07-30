@@ -1,9 +1,11 @@
+// src/pages/ClientDetails.tsx
+
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, DollarSign, Calendar, User, Phone, Plus, Receipt } from 'lucide-react';
+import { ArrowLeft, DollarSign, Calendar, User, Phone, Plus, Receipt, Gift, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/authStore';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
-import { Client, Remboursement, VenteCredit } from '../types';
+import { Client, Remboursement, VenteCredit, FideliteHistorique } from '../types';
 import { useParams } from 'react-router-dom';
 
 export default function ClientDetails() {
@@ -22,7 +24,12 @@ export default function ClientDetails() {
   });
   const [submitting, setSubmitting] = useState(false);
 
+  // Fidélité
+  const [fideliteHistoriques, setFideliteHistoriques] = useState<FideliteHistorique[]>([]);
+  const [togglingId, setTogglingId] = useState<number | null>(null);
+
   const { token } = useAuthStore();
+  const canGererRecompense = useAuthStore(s => s.canManageProducts); // patron/admin/vendeur — même règle que côté back
 
   // ✅ Fonction utilitaire pour convertir solde_dette en nombre
   const getSoldeDette = (solde: any): number => {
@@ -38,6 +45,7 @@ export default function ClientDetails() {
 
   useEffect(() => {
     fetchClientDetails();
+    fetchFideliteHistorique();
   }, [clientId]);
 
   const fetchClientDetails = async () => {
@@ -47,7 +55,7 @@ export default function ClientDetails() {
         method: 'GET'
       });
       const data = await response.json();
-      
+
       if (data.success) {
         setClient(data.client);
         setRemboursements(data.client.remboursements || []);
@@ -61,6 +69,42 @@ export default function ClientDetails() {
       setLoading(false);
     }
   };
+
+  const fetchFideliteHistorique = async () => {
+    try {
+      const res  = await fetchWithAuth(`${API_URL}/clients/${clientId}/fidelite-historique`);
+      const data = await res.json();
+      if (data.success) setFideliteHistoriques(data.historiques);
+    } catch { /* non bloquant pour le reste de la page */ }
+  };
+
+  const toggleConsomme = async (historique: FideliteHistorique) => {
+    setTogglingId(historique.id);
+    try {
+      const res = await fetchWithAuth(`${API_URL}/fidelite/historique/${historique.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ est_consomme: !historique.est_consomme }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setFideliteHistoriques(list =>
+          list.map(h => (h.id === historique.id ? result.historique : h))
+        );
+        toast.success(result.historique.est_consomme
+          ? 'Récompense marquée comme utilisée'
+          : 'Récompense remise à disposition');
+      } else {
+        toast.error(result.message || 'Erreur lors de la mise à jour');
+      }
+    } catch { toast.error('Erreur lors de la mise à jour du statut'); }
+    finally { setTogglingId(null); }
+  };
+
+  const MOIS_LABELS = [
+    '', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+  ];
 
   const handleRemboursement = async () => {
     if (!remboursementData.montant || parseFloat(remboursementData.montant) <= 0) {
@@ -93,8 +137,12 @@ export default function ClientDetails() {
       const result = await response.json();
 
       if (result.success) {
-        toast.success('Remboursement enregistré !');
+        const pts = result.fidelite?.points ?? 0;
+        toast.success(
+          'Remboursement enregistré !' + (pts > 0 ? ` +${pts} pts fidélité` : '')
+        );
         fetchClientDetails();
+        fetchFideliteHistorique();
         setShowRemboursementModal(false);
         setRemboursementData({ montant: '', moyen_paiement: 'especes', note: '' });
       } else {
@@ -158,7 +206,7 @@ export default function ClientDetails() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-6 rounded-lg shadow-sm">
           <div className="flex items-center justify-between">
             <div>
@@ -173,6 +221,20 @@ export default function ClientDetails() {
               soldeDette === 0 ? 'bg-green-100' : 'bg-red-100'
             }`}>
              
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Points fidélité (mois en cours)</p>
+              <p className="text-2xl font-bold text-purple-600">
+                {client.solde_points ?? 0} pts
+              </p>
+            </div>
+            <div className="p-3 bg-purple-100 rounded-full">
+              <Gift className="w-6 h-6 text-purple-600" />
             </div>
           </div>
         </div>
@@ -252,6 +314,71 @@ export default function ClientDetails() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Historique fidélité mensuel */}
+      <div className="bg-white rounded-lg shadow-sm">
+        <div className="p-6 border-b flex items-center gap-2">
+          <Gift className="w-5 h-5 text-purple-500" />
+          <h2 className="text-lg font-semibold">Historique fidélité mensuel</h2>
+        </div>
+
+        {fideliteHistoriques.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 text-gray-500 text-xs uppercase">
+                <tr>
+                  <th className="px-6 py-3 text-left">Mois</th>
+                  <th className="px-6 py-3 text-right">Total acheté</th>
+                  <th className="px-6 py-3 text-right">Points cumulés</th>
+                  <th className="px-6 py-3 text-center">Récompense utilisée</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {fideliteHistoriques.map(h => (
+                  <tr key={h.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-3 font-medium text-gray-800">
+                      {MOIS_LABELS[h.mois]} {h.annee}
+                    </td>
+                    <td className="px-6 py-3 text-right text-gray-700">
+                      {Math.round(h.montant_achat_total).toLocaleString('fr-FR')} F
+                    </td>
+                    <td className="px-6 py-3 text-right font-semibold text-purple-600">
+                      {h.points_total} pts
+                    </td>
+                    <td className="px-6 py-3 text-center">
+                      {canGererRecompense() ? (
+                        <button
+                          onClick={() => toggleConsomme(h)}
+                          disabled={togglingId === h.id}
+                          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
+                                      transition-colors disabled:opacity-50
+                            ${h.est_consomme
+                              ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                        >
+                          {h.est_consomme && <Check className="w-3.5 h-3.5" />}
+                          {h.est_consomme ? 'Utilisée' : 'Non utilisée'}
+                        </button>
+                      ) : (
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium
+                          ${h.est_consomme ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                          {h.est_consomme && <Check className="w-3.5 h-3.5" />}
+                          {h.est_consomme ? 'Utilisée' : 'Non utilisée'}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="p-12 text-center text-gray-500">
+            <Gift className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+            <p>Aucun historique de fidélité pour ce client</p>
+          </div>
+        )}
       </div>
 
       {/* Historique des ventes à crédit */}

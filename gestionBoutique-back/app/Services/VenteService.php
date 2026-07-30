@@ -12,6 +12,9 @@ use App\Models\SecuritySetting;
 use App\Models\PriceOverride;
 use App\Models\VentePaiement;
 use App\Models\Utilisateur;
+use App\Models\MouvementCaisse;
+use APP\Models\Fidelite;
+use App\Services\FideliteService;
 use App\Support\UnitConverter;
 use App\Notifications\PriceOverrideNotification;
 use Illuminate\Support\Facades\DB;
@@ -24,6 +27,7 @@ class VenteService
     public function __construct(
         private readonly CaisseService $caisseService,
         private readonly DashboardCacheService $dashboardCache,
+        private readonly FideliteService $fideliteService,  
     ) {}
 
     /**
@@ -41,19 +45,17 @@ class VenteService
         $employeId = $actor instanceof Employe ? $actor->id : null;
 
         $paiements = $validated['paiements'];
+        $clientId  = $validated['client_id'] ?? null;   
 
         // --- Contrôle C3 : dette exige un client rattaché ---
         $ligneDette = collect($paiements)->firstWhere('mode', 'dette');
-        $client     = null;
-        $clientId   = null;
-
-        if ($ligneDette) {
-            if (empty($ligneDette['client_id'])) {
-                throw new \RuntimeException('Client requis pour une vente à crédit', 400);
-            }
-            $client   = Client::byUtilisateur($ownerId)->findOrFail($ligneDette['client_id']);
-            $clientId = $client->id;
+        if ($ligneDette && !$clientId) {
+            throw new \RuntimeException('Client requis pour une vente à crédit', 400);
         }
+
+        $client = $clientId
+            ? Client::byUtilisateur($ownerId)->findOrFail($clientId)
+            : null;
 
         DB::beginTransaction();
 
@@ -252,6 +254,23 @@ class VenteService
                 }
             }
 
+           //  Fidélité — points sur la part comptant, indépendamment du mode ---
+            $fideliteInfo = null;
+            if ($client) {
+                $montantDetteVente = (int) round(
+                    collect($lignesAPersister)->where('mode', 'dette')->sum('montant')
+                );
+                $montantComptant = max(0, (int) round($total) - $montantDetteVente);
+
+                $fideliteInfo = $this->fideliteService->crediterEtTracer(
+                    client: $client,
+                    ownerId: $ownerId,
+                    type: 'vente',
+                    sourceId: $vente->id,
+                    montantReference: $montantComptant,
+                );
+            }
+
             if ($caisse) {
                 $caisse->refresh();
                 $caisseInfo = $this->caisseService->buildCaisseInfo($caisse);
@@ -273,6 +292,7 @@ class VenteService
                 'vente'                => $vente,
                 'nouveau_solde_client' => $client ? $client->fresh()->solde_dette : null,
                 'caisse'               => $caisseInfo,
+                'fidelite'             => $fideliteInfo,
             ];
 
         } catch (\Exception $e) {

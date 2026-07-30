@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Services\CaisseService;
 use App\Services\DashboardCacheService;
+use App\Services\FideliteService;
 use App\Services\ActorResolver;
 
 class RemboursementController extends Controller
@@ -23,6 +24,7 @@ class RemboursementController extends Controller
         private readonly ActorResolver $actorResolver,
         private readonly CaisseService $caisseService,
         private readonly DashboardCacheService $dashboardCache,
+        private readonly FideliteService $fideliteService,
     ) {}
     /**
      * Résoudre l'acteur connecté (Employe ou Utilisateur/patron).
@@ -89,6 +91,15 @@ class RemboursementController extends Controller
                 'note'           => $validated['note'] ?? null,
             ]);
 
+          // Fidélité — attribution automatique sur le remboursement ---
+            $fideliteInfo = $this->fideliteService->crediterEtTracer(
+                client: $client,
+                ownerId: $ownerId,
+                type: 'remboursement_dette',
+                sourceId: $remboursement->id,
+                montantReference: (int) round($validated['montant']),
+            );
+
             $client->reduireDette($validated['montant']);
 
             $caisseInfo = null;
@@ -118,6 +129,7 @@ class RemboursementController extends Controller
                 'remboursement' => $remboursement,
                 'nouveau_solde' => $client->fresh()->solde_dette,
                 'caisse'        => $caisseInfo,
+                'fidelite'      => $fideliteInfo,
             ], 201);
 
         } catch (\Exception $e) {

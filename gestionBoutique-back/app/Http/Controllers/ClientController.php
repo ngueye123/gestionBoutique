@@ -70,12 +70,14 @@ class ClientController extends Controller
                 'client'  => $existant
             ], 409);
         }
+      
 
-        $client = Client::create([
+         $client = Client::create([
             'nom'            => $validated['nom'],
             'telephone'      => $validated['telephone'],
             'utilisateur_id' => $ownerId,
-            'solde_dette'    => 0
+            'solde_dette'    => 0,
+            'solde_points'   => 0,   // NEW
         ]);
 
         return response()->json([
@@ -197,7 +199,7 @@ class ClientController extends Controller
         
         $clients = Client::byUtilisateur($ownerId)
             ->search($query)
-            ->select('id', 'nom', 'telephone', 'solde_dette')
+            ->select('id', 'nom', 'telephone', 'numero_carte', 'solde_dette', 'solde_points') 
             ->limit(10)
             ->get();
 
