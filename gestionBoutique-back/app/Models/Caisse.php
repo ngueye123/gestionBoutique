@@ -105,34 +105,35 @@ class Caisse extends Model
         ]);
     }
 
-    public function debiter(float $montant, ?string $note = null): MouvementCaisse
+   public function debiter(float $montant, ?string $note = null, string $type = 'prelevement'): MouvementCaisse
     {
         $caisseVerrouillee = self::where('id', $this->id)->lockForUpdate()->first();
         $soldeAvant         = $caisseVerrouillee->solde_actuel;
 
-        // decrement() est l'équivalent atomique pour les sorties
         self::where('id', $this->id)->decrement('solde_actuel', $montant);
 
         $this->refresh();
 
-        $count     = MouvementCaisse::whereDate('created_at', today())
-            ->where('type', 'prelevement')
-            ->count() + 1;
-        $reference = 'PREL-' . now()->format('Ymd') . '-' . str_pad($count, 4, '0', STR_PAD_LEFT);
+        $ticketReference = null;
+        if ($type === 'prelevement') {
+            $count = MouvementCaisse::whereDate('created_at', today())
+                ->where('type', 'prelevement')
+                ->count() + 1;
+            $ticketReference = 'PREL-' . now()->format('Ymd') . '-' . str_pad($count, 4, '0', STR_PAD_LEFT);
+        }
 
         return MouvementCaisse::create([
             'caisse_id'        => $this->id,
             'utilisateur_id'   => $this->utilisateur_id,
-            'type'             => 'prelevement',
+            'type'             => $type,
             'montant'          => $montant,
             'solde_avant'      => $soldeAvant,
             'solde_apres'      => $this->solde_actuel,
             'vente_id'         => null,
-            'ticket_reference' => $reference,
+            'ticket_reference' => $ticketReference,
             'note'             => $note,
         ]);
     }
-
     // ─────────────────────────────────────────────────────────────────────────
     // Helpers
     // ─────────────────────────────────────────────────────────────────────────

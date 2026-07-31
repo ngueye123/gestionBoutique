@@ -21,6 +21,7 @@ import VerifyEmployeEmail from './pages/VerifyEmployeEmail';
 import SecuritySettings from './pages/SecuritySettings';
 import PriceOverrides from './pages/PriceOverrides';
 import FideliteSettings from './pages/FideliteSettings';
+import VentesHistorique from './pages/VentesHistorique';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore(state => state.token)
@@ -155,6 +156,15 @@ export default function App() {
             element={
               <RoleGuard allowedRoles={['patron', 'admin', 'vendeur', 'caissier']}>
                 <ClientDetails />
+              </RoleGuard>
+            }
+          />
+
+          <Route
+            path="ventes-historique"
+            element={
+              <RoleGuard allowedRoles={['patron', 'admin', 'vendeur', 'caissier']}>
+                <VentesHistorique />
               </RoleGuard>
             }
           />

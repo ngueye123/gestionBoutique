@@ -47,6 +47,7 @@ const MOUVEMENT_CONFIG = {
   apport:              { label: 'Apport',        icon: ArrowUpRight,   color: 'text-emerald-600', bg: 'bg-emerald-50',  signe: '+' },
   remboursement_dette: { label: 'Remb. dette',   icon: ArrowUpRight,   color: 'text-teal-600',    bg: 'bg-teal-50',     signe: '+' },
   prelevement:         { label: 'Prélèvement',   icon: ArrowDownLeft,  color: 'text-red-500',     bg: 'bg-red-50',      signe: '−' },
+  depense:             { label: 'Dépense',       icon: ArrowDownLeft,  color: 'text-orange-500',  bg: 'bg-orange-50',   signe: '−' },
 } as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -211,7 +212,7 @@ export default function Caisse() {
     mouvementsFiltres.filter(m => ['apport', 'remboursement_dette'].includes(m.type)).reduce((s, m) => s + m.montant, 0),
     [mouvementsFiltres]);
   const totalSorties = useMemo(() =>
-    mouvementsFiltres.filter(m => m.type === 'prelevement').reduce((s, m) => s + m.montant, 0),
+    mouvementsFiltres.filter(m => ['prelevement', 'depense'].includes(m.type)).reduce((s, m) => s + m.montant, 0),
     [mouvementsFiltres]);
 
   // ── Mouvement ─────────────────────────────────────────────────────────────
@@ -685,6 +686,7 @@ export default function Caisse() {
                   <option value="apport">Apport</option>
                   <option value="prelevement">Prélèvement</option>
                   <option value="remboursement_dette">Remb. dette</option>
+                  <option value="depense">Dépense</option>
                 </select>
               </div>
 

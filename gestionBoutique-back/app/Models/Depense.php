@@ -10,8 +10,10 @@ class Depense extends Model
 {
     protected $table = 'depenses';
 
-    protected $fillable = [
+   protected $fillable = [
         'utilisateur_id',
+        'caisse_id',
+        'mouvement_caisse_id',
         'montant',
         'date_depense',
         'description',
@@ -30,6 +32,16 @@ class Depense extends Model
     public function utilisateur(): BelongsTo
     {
         return $this->belongsTo(Utilisateur::class, 'utilisateur_id');
+    }
+
+    public function caisse(): BelongsTo
+    {
+        return $this->belongsTo(Caisse::class);
+    }
+
+    public function mouvementCaisse(): BelongsTo
+    {
+        return $this->belongsTo(MouvementCaisse::class);
     }
 
     // ─── Scopes ─────────────────────────────────────────────────────────────

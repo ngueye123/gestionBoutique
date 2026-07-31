@@ -81,7 +81,7 @@ class MouvementCaisse extends Model
      */
     public function estEntree(): bool
     {
-        return in_array($this->type, ['vente', 'apport', 'remboursement_dette']);
+        return in_array($this->type, ['vente', 'apport', 'remboursement_dette', 'ajustement_depense']);
     }
 
     /**

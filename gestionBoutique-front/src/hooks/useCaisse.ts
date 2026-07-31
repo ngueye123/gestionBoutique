@@ -21,7 +21,7 @@ export interface CaisseData {
 
 export interface MouvementData {
   id: number;
-  type: 'apport' | 'prelevement' | 'remboursement_dette';
+  type: 'apport' | 'prelevement' | 'remboursement_dette' | 'depense' ;
   montant: number;
   solde_avant: number;
   solde_apres: number;

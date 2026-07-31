@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Download, Eye, Loader2, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
@@ -21,6 +22,8 @@ export function InvoiceButton({
 }: InvoiceButtonProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [showFormatMenu, setShowFormatMenu] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ left: number; bottom: number } | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -37,6 +40,30 @@ export function InvoiceButton({
       </div>
     );
   }
+
+  // Calcule la position du menu par rapport au bouton déclencheur (viewport),
+  // pour qu'il s'affiche correctement même dans un conteneur avec overflow-hidden
+  // (ex: tableau à coins arrondis).
+  const openMenu = () => {
+    const rect = triggerRef.current?.getBoundingClientRect();
+    if (rect) {
+      const menuWidth = 200; // doit correspondre au min-w-[200px] du menu
+      let left = rect.left;
+      if (left + menuWidth > window.innerWidth - 8) {
+        left = rect.right - menuWidth;
+      }
+      setMenuPos({ left: Math.max(8, left), bottom: window.innerHeight - rect.top + 8 });
+    }
+    setShowFormatMenu(true);
+  };
+
+  const toggleMenu = () => {
+    if (showFormatMenu) {
+      setShowFormatMenu(false);
+    } else {
+      openMenu();
+    }
+  };
 
   const downloadInvoice = async (format: 'a4' | 'thermal') => {
     setShowFormatMenu(false);
@@ -100,40 +127,53 @@ export function InvoiceButton({
     }
   };
 
-  // Menu de sélection de format
-  const FormatMenu = ({ action }: { action: 'download' | 'preview' }) => (
-    <div className="absolute bottom-full mb-2 left-0 bg-white border rounded-lg shadow-lg p-2 min-w-[200px] z-50">
-      <div className="text-xs font-semibold text-gray-500 mb-2 px-2">
-        Choisir le format
-      </div>
-      <button
-        onClick={() => action === 'download' ? downloadInvoice('a4') : previewInvoice('a4')}
-        className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded flex items-center space-x-2"
-      >
-        <FileText className="w-4 h-4" />
-        <div>
-          <div className="font-medium text-sm">A4 Standard</div>
-          <div className="text-xs text-gray-500">Format professionnel</div>
+  // Menu de sélection de format — rendu dans un portail (document.body), positionné
+  // en fixed par rapport au bouton, pour ne jamais être coupé par un ancêtre overflow-hidden.
+  const FormatMenu = ({ action }: { action: 'download' | 'preview' }) => {
+    if (!menuPos) return null;
+
+    return createPortal(
+      <>
+        {/* Backdrop invisible pour fermer le menu au clic à l'extérieur */}
+        <div className="fixed inset-0 z-40" onClick={() => setShowFormatMenu(false)} />
+        <div
+          className="fixed bg-white border rounded-lg shadow-lg p-2 min-w-[200px] z-50"
+          style={{ left: menuPos.left, bottom: menuPos.bottom }}
+        >
+          <div className="text-xs font-semibold text-gray-500 mb-2 px-2">
+            Choisir le format
+          </div>
+          <button
+            onClick={() => action === 'download' ? downloadInvoice('a4') : previewInvoice('a4')}
+            className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded flex items-center space-x-2"
+          >
+            <FileText className="w-4 h-4" />
+            <div>
+              <div className="font-medium text-sm">A4 Standard</div>
+              <div className="text-xs text-gray-500">Format professionnel</div>
+            </div>
+          </button>
+          <button
+            onClick={() => action === 'download' ? downloadInvoice('thermal') : previewInvoice('thermal')}
+            className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded flex items-center space-x-2"
+          >
+            <FileText className="w-4 h-4" />
+            <div>
+              <div className="font-medium text-sm">Ticket Thermique</div>
+              <div className="text-xs text-gray-500">Format caisse (58mm)</div>
+            </div>
+          </button>
         </div>
-      </button>
-      <button
-        onClick={() => action === 'download' ? downloadInvoice('thermal') : previewInvoice('thermal')}
-        className="w-full text-left px-3 py-2 hover:bg-gray-100 rounded flex items-center space-x-2"
-      >
-        <FileText className="w-4 h-4" />
-        <div>
-          <div className="font-medium text-sm">Ticket Thermique</div>
-          <div className="text-xs text-gray-500">Format caisse (58mm)</div>
-        </div>
-      </button>
-    </div>
-  );
+      </>,
+      document.body
+    );
+  };
 
   if (variant === 'icon') {
     return (
-      <div className="relative">
+      <div ref={triggerRef} className="relative inline-block">
         <button
-          onClick={() => setShowFormatMenu(!showFormatMenu)}
+          onClick={toggleMenu}
           disabled={isDownloading}
           className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-50"
           title="Télécharger la facture"
@@ -151,9 +191,9 @@ export function InvoiceButton({
 
   if (variant === 'secondary') {
     return (
-      <div className="relative flex space-x-2">
+      <div ref={triggerRef} className="relative flex space-x-2">
         <button
-          onClick={() => setShowFormatMenu(!showFormatMenu)}
+          onClick={toggleMenu}
           disabled={isDownloading}
           className="flex-1 inline-flex items-center justify-center px-4 py-2 bg-white text-gray-700 border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50"
         >
@@ -180,9 +220,9 @@ export function InvoiceButton({
         Prévisualiser la facture
       </button>
       
-      <div className="relative">
+      <div ref={triggerRef} className="relative">
         <button
-          onClick={() => setShowFormatMenu(!showFormatMenu)}
+          onClick={toggleMenu}
           disabled={isDownloading}
           className="w-full inline-flex items-center justify-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50"
         >

@@ -117,7 +117,10 @@ class Vente extends Model
      */
     public function scopeBetweenDates($query, $startDate, $endDate)
     {
-        return $query->whereBetween('created_at', [$startDate, $endDate]);
+        return $query->whereBetween('created_at', [
+            $startDate . ' 00:00:00',
+            $endDate . ' 23:59:59',
+        ]);
     }
 
     /**

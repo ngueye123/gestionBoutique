@@ -34,7 +34,7 @@ class CaisseController extends Controller
         $perPage = min((int) $request->input('per_page', 50), 100); // plafonné à 100 max
 
         $mouvements = MouvementCaisse::where('caisse_id', $caisse->id)
-            ->whereIn('type', ['apport', 'prelevement', 'remboursement_dette'])
+            ->whereIn('type', ['apport', 'prelevement', 'remboursement_dette', 'depense'])
             ->orderByDesc('created_at')
             ->paginate($perPage); 
 

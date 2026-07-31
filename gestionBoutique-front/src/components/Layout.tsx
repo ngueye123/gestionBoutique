@@ -105,6 +105,13 @@ function Layout() {
         )}
 
         {canViewProducts() && (
+          <Link to="/ventes-historique" className={linkClass('/ventes-historique')}>
+            <History className="w-5 h-5 mr-2" />
+            Historique des ventes
+          </Link>
+        )}
+
+        {canViewProducts() && (
           <Link to="/caisse" className={linkClass('/caisse')}>
             <Wallet className="w-5 h-5 mr-2" />
             Ma Caisse
@@ -159,7 +166,7 @@ function Layout() {
       )}
 
       {/* Bouton de déconnexion */}
-      <div className="absolute bottom-4 left-4">
+      <div className="bottom-4 left-4">
         <button
           onClick={handleLogout}
           className="inline-flex items-center px-4 py-2 text-gray-700 hover:bg-red-50 hover:text-red-600 rounded-md transition-colors"

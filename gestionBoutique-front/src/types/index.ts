@@ -28,7 +28,7 @@ export interface Product {
   reference: string
   name: string
   price: number
-   prix_achat?: number | null
+  prix_achat?: number | null
   stock: number
   category: string
   min_stock: number
@@ -94,6 +94,41 @@ export interface VenteDetail {
   prix_unitaire: number
   unite_prix: string
   sous_total: number
+}
+
+// ========== TYPES HISTORIQUE DES VENTES ==========
+export interface EmployeFiltre {
+  id: number
+  nom: string
+  role: 'admin' | 'vendeur' | 'caissier'
+}
+
+export interface VenteHistorique {
+  id: number
+  reference: string
+  employe_id: number | null
+  client_id: number | null
+  total: number
+  moyen_paiement: 'especes' | 'wave' | 'orange_money' | 'dette' | 'mixte'
+  created_at: string
+  employe?: EmployeFiltre | null
+  client?: Client | null
+  details?: VenteDetail[]
+}
+
+export interface VentesHistoriqueResponse {
+  success: boolean
+  ventes: {
+    data: VenteHistorique[]
+    current_page: number
+    last_page: number
+    total: number
+  }
+}
+
+export interface VenteDetailResponse {
+  success: boolean
+  vente: VenteHistorique
 }
 
 

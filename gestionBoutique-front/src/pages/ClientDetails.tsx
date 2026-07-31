@@ -7,7 +7,8 @@ import { useAuthStore } from '../store/authStore';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { Client, Remboursement, VenteCredit, FideliteHistorique } from '../types';
 import { useParams } from 'react-router-dom';
-
+import VenteDetailPanel from '../components/ventes/VenteDetailPanel';
+import { InvoiceButton } from '../components/InvoiceButton';
 export default function ClientDetails() {
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
   const { id } = useParams<{ id: string }>();
@@ -22,6 +23,7 @@ export default function ClientDetails() {
     moyen_paiement: 'especes' as 'especes' | 'wave' | 'orange_money' | 'carte',
     note: ''
   });
+  const [selectedReference, setSelectedReference] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Fidélité
@@ -392,7 +394,11 @@ export default function ClientDetails() {
             ventes.map((vente) => {
               const totalVente = getMontant(vente.total);
               return (
-                <div key={vente.id} className="p-6 hover:bg-gray-50">
+               <div
+                  key={vente.id}
+                  onClick={() => setSelectedReference(vente.reference)}
+                  className="p-6 hover:bg-blue-100 transition-colors cursor-pointer"
+                >
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <div className="flex items-center space-x-3">
@@ -413,6 +419,9 @@ export default function ClientDetails() {
                         })}
                       </div>
                     </div>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <InvoiceButton venteId={vente.id} venteReference={vente.reference} variant="icon" />
+                    </div>
                   </div>
                 </div>
               );
@@ -425,6 +434,13 @@ export default function ClientDetails() {
           )}
         </div>
       </div>
+
+      {selectedReference && (
+        <VenteDetailPanel
+          reference={selectedReference}
+          onClose={() => setSelectedReference(null)}
+        />
+      )}
 
       {/* Modal de remboursement */}
       {showRemboursementModal && (

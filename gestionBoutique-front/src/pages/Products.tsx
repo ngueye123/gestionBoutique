@@ -280,17 +280,22 @@ function Products() {
   const kpis = useMemo(() => {
       const avecPrixAchat = products.filter(p => p.prix_achat != null && p.prix_achat > 0);
 
-      // Somme des marges unitaires (FCFA), sur les produits où prix_achat est renseigné
+      // Somme des marges totales (FCFA), sur les produits où prix_achat est renseigné
       const margeTotale = avecPrixAchat.length > 0
-        ? avecPrixAchat.reduce((s, p) => s + (p.price - (p.prix_achat as number)), 0)
-        : null;
+    ? avecPrixAchat.reduce((s, p) => {
+        const conversionFactor = UNIT_CONFIG[p.unit_type].factors[p.unit_reference];
+        const margeUnitaire = p.price - (p.prix_achat as number);
+        
+        return s + (margeUnitaire / conversionFactor) * p.stock;
+      }, 0)
+    : null;
 
       return {
         total:    products.length,
         low:      products.filter(p => p.stock > 0 && p.stock <= p.min_stock).length,
         rupture:  products.filter(p => p.stock === 0).length,
         valeur:   products.reduce(
-          (s, p) => s + (p.price / UNIT_CONFIG[p.unit_type].factors[p.unit_reference]) * p.stock,
+          (s, p) => s + (p.prix_achat as number / UNIT_CONFIG[p.unit_type].factors[p.unit_reference]) * p.stock,
           0
         ),
         margeTotale,
@@ -534,8 +539,13 @@ function Products() {
                   </th>
                   <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
                                  uppercase tracking-wider">
-                    Prix
+                    Prix d'achat
                   </th>
+                  <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
+                                 uppercase tracking-wider">
+                    Prix de vente
+                  </th>
+
                   <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
                                  uppercase tracking-wider">
                     Stock
@@ -573,8 +583,17 @@ function Products() {
                           {product.category}
                         </span>
                       </td>
-
-                      {/* Prix */}
+                      {/* Prix d'achat */}
+                      <td className="px-5 py-3.5 whitespace-nowrap">
+                        {product.prix_achat != null ? (
+                          <span className="text-sm font-medium text-gray-900">
+                            {fmt(product.prix_achat)}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
+                      {/* Prix de vente */}
                       <td className="px-5 py-3.5 whitespace-nowrap">
                         <span className="text-sm font-medium text-gray-900">
                           {fmt(product.price)}
@@ -809,7 +828,7 @@ function Products() {
                         type="number"
                         step="1"
                         min="0"
-                        {...register('prix_achat', { valueAsNumber: true, setValueAs: v => (v === '' || isNaN(v) ? undefined : v) })}
+                        {...register('prix_achat', { setValueAs: (v) => (v === '' || isNaN(Number(v)) ? null : Number(v)) })}
                         placeholder="Non renseigné"
                         className="w-full px-3 py-2 pr-10 border border-gray-200 rounded-lg text-sm
                                    focus:ring-2 focus:ring-blue-500 focus:border-blue-500

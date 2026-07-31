@@ -61,7 +61,7 @@ Route::middleware(['jwt.custom'])->group(function () {
     Route::prefix('ventes')->group(function () {
         Route::get('/autocomplete', [FactureController::class, 'autocomplete']);
         Route::get('/search', [FactureController::class, 'searchByReference']);
-
+        Route::get('/filtres/employes', [VenteController::class, 'employesFiltre']);
         //  Classe complète au lieu de l'alias 'check.caisse'
         Route::post('/', [VenteController::class, 'store'])
             ->middleware(CheckCaissePlafond::class);

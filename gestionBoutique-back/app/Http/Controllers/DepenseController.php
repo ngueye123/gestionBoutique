@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use App\Services\DashboardCacheService;
-
+use App\Models\Caisse;
 class DepenseController extends Controller
 {
     use RoleHelper;
@@ -55,13 +55,7 @@ class DepenseController extends Controller
         
         $patron = Utilisateur::find($actor->utilisateur_id);
         return $patron;
-        /** 
-        if ($actor instanceof Employe && $actor->role === 'admin' && $actor->role=='vendeur') {
-            $patron = Utilisateur::find($actor->utilisateur_id);
-            if ($patron) {
-                return $patron;
-            }
-        } */
+       
 
         //abort(403, 'Accès refusé aux dépenses.');
     }
@@ -206,9 +200,8 @@ class DepenseController extends Controller
     // POST /api/depenses
     // ─────────────────────────────────────────────────────────────────────────
 
-    public function store(Request $request): JsonResponse
+   public function store(Request $request): JsonResponse
     {
-        $patron = $this->resolveOwner();
         if (!$this->canManageDepenses()) {
             return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent gérer les dépenses');
         }
@@ -220,24 +213,6 @@ class DepenseController extends Controller
                 'description'  => 'required|string|min:3|max:500',
                 'categorie'    => 'nullable|string|in:' . implode(',', array_keys(Depense::CATEGORIES)),
             ]);
-
-            $ownerId = $this->getOwnerId();
-            $depense = Depense::create([
-                'utilisateur_id' => $patron->id,
-                'montant'        => floatval($validated['montant']),
-                'date_depense'   => $validated['date_depense'],
-                'description'    => trim($validated['description']),
-                'categorie'      => $validated['categorie'] ?? 'autre',
-            ]);
-             
-            $this->dashboardCache->invalidate($patron->id);
-
-            return response()->json([
-                'success'  => true,
-                'message'  => 'Dépense enregistrée avec succès.',
-                'depense'  => $depense,
-            ], 201);
-
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
@@ -245,6 +220,60 @@ class DepenseController extends Controller
                 'errors'  => $e->errors(),
             ], 422);
         }
+
+        $actor   = $this->getActor();
+        $patron  = $this->resolveOwner();
+        $montant = floatval($validated['montant']);
+
+        DB::beginTransaction();
+        try {
+            // Caisse de celui qui enregistre la dépense — patron OU employé,
+            // chacun a la sienne (cf. Caisse::pour()).
+            $caisse            = Caisse::pour($actor);
+            $caisseVerrouillee = Caisse::where('id', $caisse->id)->lockForUpdate()->first();
+
+            if ($montant > $caisseVerrouillee->solde_actuel) {
+                DB::rollBack();
+                return response()->json([
+                    'success' => false,
+                    'message' => "Le montant ({$montant} F) dépasse le solde disponible en caisse ({$caisseVerrouillee->solde_actuel} F).",
+                ], 422);
+            }
+
+            $depense = Depense::create([
+                'utilisateur_id' => $patron->id,
+                'caisse_id'      => $caisse->id,
+                'montant'        => $montant,
+                'date_depense'   => $validated['date_depense'],
+                'description'    => trim($validated['description']),
+                'categorie'      => $validated['categorie'] ?? 'autre',
+            ]);
+
+            $mouvement = $caisse->debiter(
+                $montant,
+                "Dépense #{$depense->id} — {$depense->description}",
+                'depense'
+            );
+
+            $depense->update(['mouvement_caisse_id' => $mouvement->id]);
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Erreur enregistrement dépense: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => "Erreur lors de l'enregistrement de la dépense.",
+            ], 500);
+        }
+
+        $this->dashboardCache->invalidate($patron->id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Dépense enregistrée et déduite de la caisse.',
+            'depense' => $depense->fresh(),
+        ], 201);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -253,37 +282,19 @@ class DepenseController extends Controller
 
     public function update(Request $request, int $id): JsonResponse
     {
-        $patron = $this->resolveOwner();
-
         if (!$this->canManageDepenses()) {
             return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent gérer les dépenses');
         }
 
-        try {
-            $depense = Depense::byUtilisateur($patron->id)->findOrFail($id);
+        $patron = $this->resolveOwner();
 
+        try {
             $validated = $request->validate([
                 'montant'      => 'required|numeric|min:1|max:99999999',
                 'date_depense' => 'required|date|before_or_equal:today',
                 'description'  => 'required|string|min:3|max:500',
                 'categorie'    => 'nullable|string|in:' . implode(',', array_keys(Depense::CATEGORIES)),
             ]);
-
-            $depense->update([
-                'montant'      => floatval($validated['montant']),
-                'date_depense' => $validated['date_depense'],
-                'description'  => trim($validated['description']),
-                'categorie'    => $validated['categorie'] ?? $depense->categorie,
-            ]);
-
-            $this->dashboardCache->invalidate($patron->id);
-
-            return response()->json([
-                'success' => true,
-                'message' => 'Dépense mise à jour.',
-                'depense' => $depense->fresh(),
-            ]);
-
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
@@ -291,6 +302,61 @@ class DepenseController extends Controller
                 'errors'  => $e->errors(),
             ], 422);
         }
+
+        $depense = Depense::byUtilisateur($patron->id)->findOrFail($id);
+
+        $nouveauMontant = floatval($validated['montant']);
+        $ancienMontant  = (float) $depense->montant;
+        $delta          = $nouveauMontant - $ancienMontant; // > 0 : dépense augmentée
+
+        DB::beginTransaction();
+        try {
+            // On réajuste la caisse D'ORIGINE (celle débitée à la création),
+            // pas forcément celle de la personne qui modifie aujourd'hui.
+            $caisse = $depense->caisse_id ? Caisse::find($depense->caisse_id) : null;
+
+            if ($caisse && abs($delta) > 0.001) {
+                $caisseVerrouillee = Caisse::where('id', $caisse->id)->lockForUpdate()->first();
+
+                if ($delta > 0 && $delta > $caisseVerrouillee->solde_actuel) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Le complément de dépense ({$delta} F) dépasse le solde disponible en caisse ({$caisseVerrouillee->solde_actuel} F).",
+                    ], 422);
+                }
+
+                if ($delta > 0) {
+                    $caisse->debiter($delta, "Ajustement dépense #{$depense->id} (montant augmenté)", 'depense');
+                } else {
+                    $caisse->crediter(abs($delta), 'ajustement_depense', null, "Ajustement dépense #{$depense->id} (montant réduit)");
+                }
+            }
+
+            $depense->update([
+                'montant'      => $nouveauMontant,
+                'date_depense' => $validated['date_depense'],
+                'description'  => trim($validated['description']),
+                'categorie'    => $validated['categorie'] ?? $depense->categorie,
+            ]);
+
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Erreur mise à jour dépense: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la mise à jour de la dépense.',
+            ], 500);
+        }
+
+        $this->dashboardCache->invalidate($patron->id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Dépense mise à jour.',
+            'depense' => $depense->fresh(),
+        ]);
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -299,19 +365,43 @@ class DepenseController extends Controller
 
     public function destroy(int $id): JsonResponse
     {
-        $patron = $this->resolveOwner();
-
         if (!$this->canManageDepenses()) {
             return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent gérer les dépenses');
         }
 
+        $patron  = $this->resolveOwner();
         $depense = Depense::byUtilisateur($patron->id)->findOrFail($id);
-        $depense->delete();
+
+        DB::beginTransaction();
+        try {
+            if ($depense->caisse_id) {
+                $caisse = Caisse::find($depense->caisse_id);
+                if ($caisse) {
+                    $caisse->crediter(
+                        (float) $depense->montant,
+                        'ajustement_depense',
+                        null,
+                        "Annulation dépense #{$depense->id} — {$depense->description}"
+                    );
+                }
+            }
+
+            $depense->delete();
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Erreur suppression dépense: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Erreur lors de la suppression de la dépense.',
+            ], 500);
+        }
 
         $this->dashboardCache->invalidate($patron->id);
+
         return response()->json([
             'success' => true,
-            'message' => 'Dépense supprimée.',
+            'message' => 'Dépense supprimée et montant recrédité en caisse.',
         ]);
     }
 

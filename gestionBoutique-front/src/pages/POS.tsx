@@ -331,7 +331,13 @@ export default function POS() {
           </span>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3">
+        <div className="flex-1 overflow-y-auto p-3 
+                [&::-webkit-scrollbar]:w-2 
+                [&::-webkit-scrollbar-track]:bg-transparent 
+                [&::-webkit-scrollbar-thumb]:bg-gray-300 
+                [&::-webkit-scrollbar-thumb]:rounded-full 
+                hover:[&::-webkit-scrollbar-thumb]:bg-gray-400
+                [scrollbar-width:thin] [scrollbar-color:#d1d5db_transparent]">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
             {filteredProducts.map(product => {
               const rupture  = product.stock === 0;
