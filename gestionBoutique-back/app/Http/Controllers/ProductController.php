@@ -94,7 +94,7 @@ class ProductController extends Controller
             $existingProduct->update([
                 'name' => $validated['name'],
                 'price' => $validated['price'],
-                'prix_achat' => 'nullable|numeric|min:0',
+                'prix_achat' => $validated['prix_achat'] ?? null,
                 'stock' => $validated['stock'],
                 'category' => $validated['category'],
                 'min_stock' => $validated['min_stock'],

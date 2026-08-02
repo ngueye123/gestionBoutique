@@ -13,13 +13,15 @@ class Product extends Model
     protected $primaryKey = 'id';
 
     protected $fillable = [
-        'reference', 
+        'reference',
         'name',
         'price',
         'prix_achat',
         'stock',
         'category',
         'min_stock',
+        'unit_type',
+        'unit_reference',
         'utilisateur_id'
     ];
     protected $casts = [
