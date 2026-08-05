@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Lock } from 'lucide-react';
-import { PasswordInput } from '../components/PasswordInput';
 
 const resetPasswordSchema = z.object({
   mot_de_passe: z.string()
@@ -29,6 +28,9 @@ function ResetPassword() {
     resolver: zodResolver(resetPasswordSchema),
   });
 
+  const userType = searchParams.get('userType') === 'employe' ? 'employe' : 'patron';
+  const userTypeLabel = userType === 'employe' ? 'Employé' : 'Patron';
+
   const onSubmit = async (data: ResetPasswordForm) => {
     const token = searchParams.get('token');
     const email = searchParams.get('email');
@@ -40,7 +42,8 @@ function ResetPassword() {
 
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/reset-password`, {
+      const endpoint = userType === 'employe' ? '/employe/reset-password' : '/reset-password';
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -75,8 +78,8 @@ function ResetPassword() {
           <Lock className="w-8 h-8 text-blue-600" />
         </div>
         <h1 className="text-2xl font-bold mb-2 text-center">Nouveau mot de passe</h1>
-        <p className="text-gray-600 mb-6 text-center text-sm">
-          Choisissez un nouveau mot de passe sécurisé
+        <p className="text-gray-600 mb-2 text-center text-sm">
+          Réinitialisation de mot de passe pour le compte {userTypeLabel.toLowerCase()}.
         </p>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

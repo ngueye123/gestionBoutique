@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Mail, ArrowLeft } from 'lucide-react';
 
@@ -13,8 +13,19 @@ const forgotPasswordSchema = z.object({
 type ForgotPasswordForm = z.infer<typeof forgotPasswordSchema>;
 
 function ForgotPassword() {
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [userType, setUserType] = useState<'patron' | 'employe'>(
+    searchParams.get('userType') === 'employe' ? 'employe' : 'patron'
+  );
+
+  useEffect(() => {
+    const param = searchParams.get('userType');
+    if (param === 'employe' || param === 'patron') {
+      setUserType(param);
+    }
+  }, [searchParams]);
 
   const { register, handleSubmit, formState: { errors } } = useForm<ForgotPasswordForm>({
     resolver: zodResolver(forgotPasswordSchema),
@@ -24,7 +35,8 @@ function ForgotPassword() {
   const onSubmit = async (data: ForgotPasswordForm) => {
     setLoading(true);
     try {
-      const response = await fetch(`${API_URL}/forgot-password`, {
+      const endpoint = userType === 'employe' ? '/employe/forgot-password' : '/forgot-password';
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -72,9 +84,26 @@ function ForgotPassword() {
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div className="bg-white p-8 rounded-lg shadow-md w-96">
         <h1 className="text-2xl font-bold mb-2 text-center">Mot de passe oublié</h1>
-        <p className="text-gray-600 mb-6 text-center text-sm">
+        <p className="text-gray-600 mb-4 text-center text-sm">
           Entrez votre email pour recevoir un lien de réinitialisation
         </p>
+
+        <div className="flex gap-2 mb-4 justify-center">
+          <button
+            type="button"
+            onClick={() => setUserType('patron')}
+            className={`rounded-full px-4 py-2 text-sm ${userType === 'patron' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+          >
+            Patron
+          </button>
+          <button
+            type="button"
+            onClick={() => setUserType('employe')}
+            className={`rounded-full px-4 py-2 text-sm ${userType === 'employe' ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+          >
+            Employé
+          </button>
+        </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           <div>

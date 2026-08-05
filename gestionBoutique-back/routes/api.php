@@ -34,6 +34,8 @@ Route::post('/employe/verify-email', [EmployeController::class, 'verifyEmail']);
 // Password reset
 Route::post('/forgot-password', [UtilisateurController::class, 'forgotPassword']);
 Route::post('/reset-password', [UtilisateurController::class, 'resetPassword']);
+Route::post('/employe/forgot-password', [EmployeAuthController::class, 'forgotPassword']);
+Route::post('/employe/reset-password', [EmployeAuthController::class, 'resetPassword']);
 
 // ============================================================
 // Routes protégées avec JWT

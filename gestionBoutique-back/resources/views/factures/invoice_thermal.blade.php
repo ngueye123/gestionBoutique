@@ -5,7 +5,15 @@
     <title>Ticket</title>
     <style>
         @page {
+            size: 58mm auto;
             margin: 0;
+        }
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: auto;
+            height: auto;
         }
         
         * {
@@ -18,10 +26,9 @@
             font-family: 'DejaVu Sans Mono', 'Courier New', monospace;
             font-size: 8px;
             color: #000;
-            line-height: 1.1;
+            line-height: 1.05;
             width: 58mm;
             padding: 2mm 2mm 0 2mm;
-            margin: 0;
         }
 
         .header {
@@ -101,20 +108,26 @@
         }
 
         .products {
-            margin-bottom: 2mm;
+            margin-bottom: 1mm;
             border-top: 1px dashed #000;
             border-bottom: 1px dashed #000;
             padding: 1.5mm 0;
         }
 
-        .products-table {
+        .products-table,
+        .totals-table {
             width: 100%;
             border-collapse: collapse;
             font-size: 7px;
+            table-layout: fixed;
         }
 
-        .products-table td {
+        .products-table td,
+        .totals-table td {
             padding: 0.5mm 1mm;
+            vertical-align: top;
+            word-break: break-word;
+            overflow-wrap: anywhere;
         }
 
         .product-name {
@@ -125,12 +138,14 @@
         .product-qty-price {
             width: 30%;
             text-align: center;
+            white-space: normal;
         }
 
         .product-total {
             width: 25%;
             text-align: right;
             font-weight: bold;
+            white-space: normal;
         }
 
         .totals {
@@ -166,20 +181,22 @@
         .footer {
             text-align: center;
             font-size: 7px;
-            margin-top: 2mm;
+            margin-top: 0.3mm;
             border-top: 1px dashed #000;
-            padding-top: 1.5mm;
-            padding-bottom: 2mm;
+            padding: 0.5mm 0 0 0;
         }
 
         .footer-message {
             font-weight: bold;
+            margin-bottom: 0;
+            line-height: 1.1;
         }
 
         .footer-note {
             font-size: 6px;
             font-style: italic;
-            margin-top: 1mm;
+            margin-top: 0.5mm;
+            line-height: 1.1;
         }
     </style>
 </head>
@@ -228,7 +245,7 @@
             @foreach($vente->details as $detail)
                 <tr>
                     <td class="product-name">{{ $detail->nom_produit }}</td>
-                   <td class="product-qty-price">{{ rtrim(rtrim(number_format($detail->quantite, 3, ',', ' '), '0'), ',') }}{{ $detail->unite_vente }}x{{ number_format($detail->prix_unitaire, 0, ',', ' ') }}F/{{ $detail->unite_prix }}</td>
+                    <td class="product-qty-price">{{ rtrim(rtrim(number_format($detail->quantite, 3, ',', ' '), '0'), ',') }}{{ $detail->unite_vente }} x {{ number_format($detail->prix_unitaire, 0, ',', ' ') }} F/{{ $detail->unite_prix }}</td>
                     <td class="product-total">{{ number_format($detail->sous_total, 0, ',', ' ') }} F</td>
                 </tr>
             @endforeach

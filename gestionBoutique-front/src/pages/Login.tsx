@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -162,13 +162,14 @@ function Login() {
             error={errors.mot_de_passe?.message}
           />
 
-          {userType === 'patron' && (
-            <div className="text-right">
-              <Link to="/forgot-password" className="text-sm text-blue-500 hover:text-blue-600">
-                Mot de passe oublié ?
-              </Link>
-            </div>
-          )}
+          <div className="text-right">
+            <Link
+              to={userType === 'employe' ? '/forgot-password?userType=employe' : '/forgot-password'}
+              className="text-sm text-blue-500 hover:text-blue-600"
+            >
+              Mot de passe oublié ?
+            </Link>
+          </div>
 
           <button
             type="submit"
