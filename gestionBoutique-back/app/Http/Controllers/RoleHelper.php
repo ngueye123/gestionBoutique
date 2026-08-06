@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Support\Facades\Auth;
+use App\Models\Utilisateur;
 
 trait RoleHelper
 {
@@ -99,6 +100,21 @@ trait RoleHelper
     public function canViewDashboard()
     {
         return $this->isPatron() || $this->isEmployeAdmin();
+    }
+
+    /**
+     * Vérifie que l'utilisateur connecté est un patron et retourne l'utilisateur.
+     *
+     * @return Utilisateur
+     */
+    protected function assertPatron()
+    {
+        $user = $this->getAuthenticatedUser();
+        if (!$user instanceof Utilisateur) {
+            abort(403, 'Action réservée au patron.');
+        }
+
+        return $user;
     }
 
     /**

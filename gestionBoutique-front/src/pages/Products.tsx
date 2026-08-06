@@ -110,6 +110,10 @@ function Products() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [viewMode, setViewMode]           = useState<ViewMode>('view');
 
+  // Pagination
+  const PAGE_SIZE = 15;
+  const [currentPage, setCurrentPage] = useState(1);
+
   // Filtres
   const [searchTerm, setSearchTerm]       = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
@@ -275,6 +279,23 @@ function Products() {
       return matchSearch && matchCategory && matchStock;
     });
   }, [products, searchTerm, categoryFilter, stockFilter]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, categoryFilter, stockFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / PAGE_SIZE));
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
+  const paginatedProducts = useMemo(() => {
+    const startIndex = (currentPage - 1) * PAGE_SIZE;
+    return filteredProducts.slice(startIndex, startIndex + PAGE_SIZE);
+  }, [filteredProducts, currentPage]);
 
   // KPIs
   const kpis = useMemo(() => {
@@ -521,47 +542,48 @@ function Products() {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full">
-              <thead>
-                <tr className="border-b border-gray-100">
-                  <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
-                                 uppercase tracking-wider">
-                    Référence
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
-                                 uppercase tracking-wider">
-                    Nom
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
-                                 uppercase tracking-wider">
-                    Catégorie
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
-                                 uppercase tracking-wider">
-                    Prix d'achat
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
-                                 uppercase tracking-wider">
-                    Prix de vente
-                  </th>
+          <>
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
+                                   uppercase tracking-wider">
+                      Référence
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
+                                   uppercase tracking-wider">
+                      Nom
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
+                                   uppercase tracking-wider">
+                      Catégorie
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
+                                   uppercase tracking-wider">
+                      Prix d'achat
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
+                                   uppercase tracking-wider">
+                      Prix de vente
+                    </th>
 
-                  <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
-                                 uppercase tracking-wider">
-                    Stock
-                  </th>
-                  <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
-                                 uppercase tracking-wider">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {filteredProducts.map(product => {
-                  const stock = stockConfig(product);
-                  return (
-                    <tr key={product.id}
-                        className="hover:bg-gray-50 transition-colors group">
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
+                                   uppercase tracking-wider">
+                      Stock
+                    </th>
+                    <th className="px-5 py-3 text-left text-xs font-medium text-gray-400
+                                   uppercase tracking-wider">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {paginatedProducts.map(product => {
+                    const stock = stockConfig(product);
+                    return (
+                      <tr key={product.id}
+                          className="hover:bg-gray-50 transition-colors group">
 
                       {/* Référence */}
                       <td className="px-5 py-3.5 whitespace-nowrap">
@@ -659,7 +681,51 @@ function Products() {
               </tbody>
             </table>
           </div>
-        )}
+          <div className="px-5 py-4 border-t border-gray-100 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-gray-500">
+              Affichage {filteredProducts.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1}
+              {' '}–{' '}{Math.min(currentPage * PAGE_SIZE, filteredProducts.length)} sur {filteredProducts.length} produit{filteredProducts.length > 1 ? 's' : ''}
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-2 rounded-lg text-sm font-medium border transition-colors
+                  disabled:opacity-40 disabled:cursor-not-allowed
+                  bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+              >
+                Précédent
+              </button>
+              <div className="flex items-center gap-1 overflow-x-auto">
+                {Array.from({ length: totalPages }, (_, index) => {
+                  const page = index + 1;
+                  return (
+                    <button
+                      key={page}
+                      type="button"
+                      onClick={() => setCurrentPage(page)}
+                      className={`px-3 py-2 rounded-lg text-sm font-medium border transition-colors ${currentPage === page ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                    >
+                      {page}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                type="button"
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 rounded-lg text-sm font-medium border transition-colors
+                  disabled:opacity-40 disabled:cursor-not-allowed
+                  bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+              >
+                Suivant
+              </button>
+            </div>
+          </div>
+        </>
+      )}
       </div>
 
       {/* ── Modal vue / édition ───────────────────────────────────────────── */}

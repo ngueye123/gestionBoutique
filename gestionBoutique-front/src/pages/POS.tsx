@@ -44,6 +44,9 @@ const getSoldePoints = (solde: any): number => {
 const formatQty = (n: number) => Number(n.toFixed(3)).toString();
 const unitLabel = (type: Product['unit_type'], unit: string) => UNIT_CONFIG[type].labels[unit] ?? unit;
 
+// Billets courants au Sénégal, pour l'encaissement en un clic
+const BILLETS_RAPIDES = [500, 1000, 2000, 5000, 10000];
+
 // ─── Config méthodes de paiement ──────────────────────────────────────────────
 
 const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string; icon: React.ReactNode }> = [
@@ -86,11 +89,13 @@ export default function POS() {
   const { items, addItem, removeItem, updateQuantity, changeUnite, overridePrice, total, clearCart } = useCartStore();
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
   const receivedRef = useRef<HTMLInputElement>(null);
+  const searchRef   = useRef<HTMLInputElement>(null); // NEW — pour garder le focus en continu
 
   // ── Chargements ───────────────────────────────────────────────────────────
 
   useEffect(() => { fetchProducts(); }, []);
   useEffect(() => { fetchFideliteConfig(); }, []);
+  useEffect(() => { searchRef.current?.focus(); }, []); // NEW — prêt à scanner/taper dès l'ouverture
 
   useEffect(() => {
     if (clientSearch.length >= 2 && !selectedClient) searchClients();
@@ -102,6 +107,18 @@ export default function POS() {
       setTimeout(() => receivedRef.current?.focus(), 100);
     }
   }, [showPaymentModal, modeEnCours]);
+
+  // NEW — fermeture des modales au clavier, sans quitter le clavier/la douchette
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (showPaymentModal) { setShowPaymentModal(false); resetPaymentState(); }
+      else if (showInvoiceSearchModal) setShowInvoiceSearchModal(false);
+      else if (overrideProduct) setOverrideProduct(null);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [showPaymentModal, showInvoiceSearchModal, overrideProduct]);
 
   const fetchProducts = async () => {
     try {
@@ -148,6 +165,18 @@ export default function POS() {
     } catch { toast.error('Erreur lors de la création du client'); }
   };
 
+  // ── Produits : ajout rapide via Entrée (scan douchette ou frappe clavier) ──
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter') return;
+    const matches = filteredProducts.filter(p => p.stock > 0);
+    if (matches.length === 1) {
+      addItem(matches[0]);
+      setSearchTerm('');
+      toast.success(`${matches[0].name} ajouté`, { duration: 1200 });
+    }
+  };
+
   // ── Paiement ──────────────────────────────────────────────────────────────
 
   const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -167,30 +196,32 @@ export default function POS() {
     ? Math.floor(montantComptantAffecte / fideliteConfig.montant_tranche) * fideliteConfig.points_accordes
     : 0;
 
-  const ajouterLignePaiement = () => {
+  const ajouterLignePaiement = (montantForce?: number) => {
+    const montant = montantForce ?? montantEnCours;
+
     if (modeEnCours === 'dette' && !selectedClient) {
       toast.error('Sélectionnez un client pour le paiement à crédit'); return;
     }
-    if (montantEnCours <= 0) {
+    if (montant <= 0) {
       toast.error('Montant invalide'); return;
     }
 
     if (modeEnCours === 'especes') {
-      const montantAffecte = Math.min(montantEnCours, resteAPayer > 0 ? resteAPayer : montantEnCours);
+      const montantAffecte = Math.min(montant, resteAPayer > 0 ? resteAPayer : montant);
       setLignesPaiement(l => [...l, {
         id: crypto.randomUUID(),
         mode: 'especes',
         montant: montantAffecte,
-        montant_recu: montantEnCours,
+        montant_recu: montant,
       }]);
     } else {
-      if (montantEnCours > resteAPayer) {
+      if (montant > resteAPayer) {
         toast.error(`Le montant dépasse le reste à payer (${fmt(resteAPayer)})`); return;
       }
       setLignesPaiement(l => [...l, {
         id: crypto.randomUUID(),
         mode: modeEnCours,
-        montant: montantEnCours,
+        montant,
       }]);
     }
 
@@ -211,7 +242,7 @@ export default function POS() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          client_id: selectedClient?.id, // NEW — client désormais au niveau de la vente, optionnel
+          client_id: selectedClient?.id,
           items: items.map(i => ({
             id: parseInt(i.id),
             quantity: i.quantity,
@@ -268,6 +299,7 @@ export default function POS() {
         setShowPaymentModal(false);
         resetPaymentState();
         fetchProducts();
+        setTimeout(() => searchRef.current?.focus(), 150); // NEW — prêt pour la vente suivante
       } else {
         toast.error(result.message || 'Erreur lors de la vente');
       }
@@ -294,21 +326,26 @@ export default function POS() {
   // ─── Rendu ────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col lg:flex-row gap-3 h-auto lg:h-[calc(100vh-5rem)] lg:p-3">
+    // NEW — page verrouillée à la hauteur de l'écran : plus jamais de scroll global,
+    // ni sur desktop ni sur mobile. Seules les zones internes défilent.
+    <div className="h-screen lg:h-[calc(100vh-5rem)] flex flex-col lg:flex-row gap-3 lg:p-3 overflow-hidden">
 
       {/* ══ Colonne gauche : catalogue produits ════════════════════════════ */}
       <div className="flex-1 bg-white rounded-xl border border-gray-200
-                      flex flex-col overflow-hidden min-w-0 h-[60vh] lg:h-auto">
+                      flex flex-col overflow-hidden min-w-0 min-h-0">
 
-        <div className="px-4 py-3 border-b border-gray-100 flex gap-2">
+        {/* Header fixe : recherche + accès factures */}
+        <div className="px-4 py-3 border-b border-gray-100 flex gap-2 shrink-0">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
+              ref={searchRef}
               type="text"
-              placeholder="Rechercher un produit ou référence..."
+              placeholder="Rechercher un produit, une référence, ou scanner..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-gray-50 border border-gray-200
+              onKeyDown={handleSearchKeyDown}
+              className="w-full pl-9 pr-4 py-2.5 bg-gray-50 border border-gray-200
                          rounded-lg text-sm focus:ring-2 focus:ring-blue-500
                          focus:border-blue-500 focus:bg-white transition-colors"
             />
@@ -317,25 +354,26 @@ export default function POS() {
             onClick={() => setShowInvoiceSearchModal(true)}
             className="flex items-center gap-1.5 px-3 py-2 bg-gray-50 border
                        border-gray-200 rounded-lg text-sm text-gray-600
-                       hover:bg-gray-100 transition-colors whitespace-nowrap"
+                       hover:bg-gray-100 transition-colors whitespace-nowrap shrink-0"
           >
             <FileText className="w-4 h-4" />
-            Factures
+            <span className="hidden sm:inline">Factures</span>
           </button>
         </div>
 
-        <div className="px-4 py-2 border-b border-gray-50">
+        <div className="px-4 py-2 border-b border-gray-50 shrink-0">
           <span className="text-xs text-gray-400">
             {filteredProducts.length} produit{filteredProducts.length > 1 ? 's' : ''}
             {searchTerm && ` pour "${searchTerm}"`}
           </span>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-3 
-                [&::-webkit-scrollbar]:w-2 
-                [&::-webkit-scrollbar-track]:bg-transparent 
-                [&::-webkit-scrollbar-thumb]:bg-gray-300 
-                [&::-webkit-scrollbar-thumb]:rounded-full 
+        {/* SEULE zone qui défile de toute la page gauche */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-3
+                [&::-webkit-scrollbar]:w-2
+                [&::-webkit-scrollbar-track]:bg-transparent
+                [&::-webkit-scrollbar-thumb]:bg-gray-300
+                [&::-webkit-scrollbar-thumb]:rounded-full
                 hover:[&::-webkit-scrollbar-thumb]:bg-gray-400
                 [scrollbar-width:thin] [scrollbar-color:#d1d5db_transparent]">
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-2.5">
@@ -422,9 +460,9 @@ export default function POS() {
 
       {/* ══ Colonne droite : panier ═════════════════════════════════════════ */}
       <div className="w-full lg:w-[340px] shrink-0 bg-white rounded-xl border border-gray-200
-                      flex flex-col overflow-hidden h-[40vh] lg:h-auto">
+                      flex flex-col overflow-hidden min-h-0 h-[42vh] lg:h-auto">
 
-        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+        <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <ShoppingCart className="w-5 h-5 text-gray-600" />
             <span className="font-medium text-gray-800 text-sm">Panier</span>
@@ -446,7 +484,8 @@ export default function POS() {
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-3 py-2 flex flex-col gap-2">
+        {/* SEULE zone qui défile dans le panier */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 py-2 flex flex-col gap-2">
           {items.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center
                             text-gray-300 py-12">
@@ -567,7 +606,8 @@ export default function POS() {
           )}
         </div>
 
-        <div className="border-t border-gray-100 p-3 space-y-3">
+        {/* Footer fixe : total + CTA, toujours visible */}
+        <div className="border-t border-gray-100 p-3 space-y-3 shrink-0">
           <div className="flex items-baseline justify-between px-1">
             <span className="text-sm text-gray-500">Total</span>
             <span className="text-2xl font-medium text-gray-900">{fmt(total)}</span>
@@ -586,12 +626,13 @@ export default function POS() {
         </div>
       </div>
 
-      {/* ══ Modal paiement ══════════════════════════════════════════════════ */}
+      {/* ══ Modal paiement — hauteur fixe, deux colonnes, aucun défilement ═══ */}
       {showPaymentModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-xl overflow-hidden">
+          <div className="bg-white rounded-2xl w-full max-w-3xl shadow-xl overflow-hidden
+                          h-[min(680px,92vh)] flex flex-col">
 
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
               <h2 className="font-medium text-gray-900">Finaliser la vente</h2>
               <button onClick={() => { setShowPaymentModal(false); resetPaymentState(); }}
                       className="text-gray-400 hover:text-gray-600 transition-colors">
@@ -599,270 +640,311 @@ export default function POS() {
               </button>
             </div>
 
-            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+            {/* Corps en 2 colonnes — aucune des deux ne défile globalement */}
+            <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100">
 
-              {/* Récap total */}
-              <div className="bg-gray-50 rounded-xl px-4 py-3 flex justify-between items-center">
-                <span className="text-sm text-gray-500">Total à encaisser</span>
-                <span className="text-2xl font-medium text-gray-900">{fmt(total)}</span>
-              </div>
+              {/* ── Colonne gauche : contexte de la vente ── */}
+              <div className="p-5 flex flex-col gap-3 min-h-0 overflow-hidden">
 
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-gray-50 rounded-xl px-3 py-2">
-                  <p className="text-xs text-gray-400">Versé</p>
-                  <p className="text-lg font-medium text-gray-900">{fmt(totalVerse)}</p>
+                <div className="bg-gray-50 rounded-xl px-4 py-3 flex justify-between items-center shrink-0">
+                  <span className="text-sm text-gray-500">Total à encaisser</span>
+                  <span className="text-2xl font-medium text-gray-900">{fmt(total)}</span>
                 </div>
-                <div className={`rounded-xl px-3 py-2 ${resteAPayer > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
-                  <p className={`text-xs ${resteAPayer > 0 ? 'text-red-500' : 'text-green-600'}`}>Reste à payer</p>
-                  <p className={`text-lg font-medium ${resteAPayer > 0 ? 'text-red-600' : 'text-green-700'}`}>
-                    {fmt(resteAPayer)}
-                  </p>
-                </div>
-              </div>
 
-              {/* ══ NEW : Bloc client — toujours visible, optionnel, indépendant du mode ══ */}
-              <div className="border border-gray-200 rounded-xl p-3 space-y-2.5">
-                <p className="text-xs font-medium text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
-                  <User className="w-3.5 h-3.5" />
-                  Client (optionnel — pour cumuler des points de fidélité)
-                </p>
-
-                {!selectedClient && !showClientForm && (
-                  <>
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                      <input
-                        type="text"
-                        value={clientSearch}
-                        onChange={e => setClientSearch(e.target.value)}
-                        placeholder="Nom ou téléphone..."
-                        className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg
-                                   text-sm focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-
-                    {clients.length > 0 && (
-                      <div className="border border-gray-200 rounded-lg overflow-hidden">
-                        {clients.map(client => {
-                          const dette = getSoldeDette(client.solde_dette);
-                          return (
-                            <button
-                              key={client.id}
-                              onClick={() => {
-                                setSelectedClient(client);
-                                setClients([]);
-                                setClientSearch('');
-                              }}
-                              className="w-full px-3 py-2.5 text-left hover:bg-gray-50
-                                         flex justify-between items-center border-b
-                                         border-gray-100 last:border-b-0"
-                            >
-                              <div>
-                                <p className="text-sm font-medium text-gray-900">{client.nom}</p>
-                                <p className="text-xs text-gray-400">{client.telephone}</p>
-                              </div>
-                              <div className="text-right">
-                                <span className={`block text-sm font-medium ${dette > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                                  {fmt(dette)}
-                                </span>
-                                <span className="block text-[11px] text-purple-500">
-                                  {getSoldePoints(client.solde_points)} pts
-                                </span>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-
-                    <button
-                      onClick={() => setShowClientForm(true)}
-                      className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg
-                                 text-sm text-gray-500 hover:border-blue-400 hover:text-blue-600
-                                 flex items-center justify-center gap-2 transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Créer un nouveau client
-                    </button>
-                  </>
-                )}
-
-                {showClientForm && (
-                  <div className="space-y-2.5">
-                    <input type="text" placeholder="Nom complet"
-                           value={newClient.nom}
-                           onChange={e => setNewClient(c => ({ ...c, nom: e.target.value }))}
-                           className="w-full px-3 py-2 border border-gray-200 rounded-lg
-                                      text-sm focus:ring-2 focus:ring-blue-500" />
-                    <input type="tel" placeholder="Téléphone"
-                           value={newClient.telephone}
-                           onChange={e => setNewClient(c => ({ ...c, telephone: e.target.value }))}
-                           className="w-full px-3 py-2 border border-gray-200 rounded-lg
-                                      text-sm focus:ring-2 focus:ring-blue-500" />
-                    <div className="flex gap-2">
-                      <button onClick={() => { setShowClientForm(false); setNewClient({ nom: '', telephone: '' }); }}
-                              className="flex-1 py-2 border border-gray-200 rounded-lg
-                                         text-sm text-gray-600 hover:bg-gray-50">
-                        Annuler
-                      </button>
-                      <button onClick={createClient}
-                              className="flex-1 py-2 bg-blue-600 text-white rounded-lg
-                                         text-sm hover:bg-blue-700">
-                        Créer
-                      </button>
-                    </div>
+                <div className="grid grid-cols-2 gap-2 shrink-0">
+                  <div className="bg-gray-50 rounded-xl px-3 py-2">
+                    <p className="text-xs text-gray-400">Versé</p>
+                    <p className="text-lg font-medium text-gray-900">{fmt(totalVerse)}</p>
                   </div>
-                )}
-
-                {selectedClient && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-blue-200 rounded-full flex items-center
-                                        justify-center text-blue-700 text-sm font-medium">
-                          {selectedClient.nom.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-gray-900">{selectedClient.nom}</p>
-                          <p className="text-xs text-gray-500">{selectedClient.telephone}</p>
-                          {selectedClient.numero_carte && (
-                            <p className="text-xs text-gray-400">Carte {selectedClient.numero_carte}</p>
-                          )}
-                        </div>
-                      </div>
-                      <button onClick={() => setSelectedClient(null)}
-                              className="text-gray-400 hover:text-red-500 transition-colors">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div className="mt-2.5 pt-2.5 border-t border-blue-200 grid grid-cols-2 gap-2 text-xs">
-                      <div>
-                        <span className="text-gray-500">Dette actuelle</span>
-                        <p className="font-medium text-red-600">{fmt(getSoldeDette(selectedClient.solde_dette))}</p>
-                      </div>
-                      <div>
-                        <span className="text-gray-500">Points fidélité</span>
-                        <p className="font-medium text-purple-600">{getSoldePoints(selectedClient.solde_points)} pts</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Bandeau points fidélité estimés */}
-              {pointsAGagner > 0 && (
-                <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-200
-                                rounded-lg text-sm text-purple-700">
-                  <Gift className="w-4 h-4 shrink-0" />
-                  <span>Points fidélité à gagner : <span className="font-semibold">{pointsAGagner} pts</span></span>
-                </div>
-              )}
-
-              {/* Lignes de paiement déjà ajoutées */}
-              {lignesPaiement.length > 0 && (
-                <div className="space-y-1.5">
-                  {lignesPaiement.map(l => (
-                    <div key={l.id} className="flex items-center justify-between px-3 py-2
-                                                bg-gray-50 rounded-lg text-sm">
-                      <div className="flex items-center gap-2">
-                        {PAYMENT_METHODS.find(pm => pm.value === l.mode)?.icon}
-                        <span className="font-medium text-gray-700">
-                          {PAYMENT_METHODS.find(pm => pm.value === l.mode)?.label}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">{fmt(l.montant)}</span>
-                        <button onClick={() => supprimerLignePaiement(l.id)}
-                                className="text-gray-300 hover:text-red-500 transition-colors">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Ajout d'une nouvelle ligne de paiement */}
-              {resteAPayer > 0 && (
-                <div className="border border-dashed border-gray-300 rounded-xl p-3 space-y-3">
-                  <p className="text-xs font-medium text-gray-400 uppercase tracking-wide">
-                    Ajouter un paiement
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    {PAYMENT_METHODS.map(pm => (
-                      <button
-                        key={pm.value}
-                        onClick={() => {
-                          setModeEnCours(pm.value);
-                          setMontantEnCours(pm.value === 'especes' ? 0 : resteAPayer);
-                        }}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border
-                                    text-sm font-medium transition-all
-                          ${modeEnCours === pm.value
-                            ? 'border-blue-500 bg-blue-50 text-blue-700'
-                            : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
-                          }`}
-                      >
-                        {pm.icon}
-                        {pm.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {modeEnCours === 'dette' && !selectedClient && (
-                    <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
-                      Sélectionnez un client ci-dessus pour un paiement à crédit
+                  <div className={`rounded-xl px-3 py-2 ${resteAPayer > 0 ? 'bg-red-50' : 'bg-green-50'}`}>
+                    <p className={`text-xs ${resteAPayer > 0 ? 'text-red-500' : 'text-green-600'}`}>Reste à payer</p>
+                    <p className={`text-lg font-medium ${resteAPayer > 0 ? 'text-red-600' : 'text-green-700'}`}>
+                      {fmt(resteAPayer)}
                     </p>
-                  )}
+                  </div>
+                </div>
 
+                {/* Client : replié par défaut pour ne prendre que peu de place */}
+               {/* Colonne gauche : devient scrollable pour absorber la hauteur du bloc client toujours ouvert */}
+<div className="p-5 flex flex-col gap-3 min-h-0 overflow-y-auto
+    [&::-webkit-scrollbar]:w-2
+    [&::-webkit-scrollbar-track]:bg-transparent
+    [&::-webkit-scrollbar-thumb]:bg-gray-300
+    [&::-webkit-scrollbar-thumb]:rounded-full
+    [scrollbar-width:thin] [scrollbar-color:#d1d5db_transparent]">
+
+  {/* Client : toujours ouvert, zéro clic pour y accéder */}
+  <div className="border border-gray-200 rounded-xl p-3 space-y-2.5 shrink-0">
+    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
+      <User className="w-3.5 h-3.5" />
+      Client (optionnel — pour cumuler des points de fidélité)
+    </p>
+
+    {!selectedClient && !showClientForm && (
+      <>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <input
+            type="text"
+            value={clientSearch}
+            onChange={e => setClientSearch(e.target.value)}
+            placeholder="Nom ou téléphone..."
+            className="w-full pl-9 pr-4 py-2 border border-gray-200 rounded-lg
+                       text-sm focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        {clients.length > 0 && (
+          <div className="border border-gray-200 rounded-lg overflow-y-auto max-h-32">
+            {clients.map(client => {
+              const dette = getSoldeDette(client.solde_dette);
+              return (
+                <button
+                  key={client.id}
+                  onClick={() => {
+                    setSelectedClient(client);
+                    setClients([]);
+                    setClientSearch('');
+                  }}
+                  className="w-full px-3 py-2 text-left hover:bg-gray-50
+                             flex justify-between items-center border-b
+                             border-gray-100 last:border-b-0"
+                >
                   <div>
-                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
-                      {modeEnCours === 'especes' ? 'Montant reçu' : 'Montant'}
+                    <p className="text-sm font-medium text-gray-900">{client.nom}</p>
+                    <p className="text-xs text-gray-400">{client.telephone}</p>
+                  </div>
+                  <div className="text-right">
+                    <span className={`block text-sm font-medium ${dette > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                      {fmt(dette)}
+                    </span>
+                    <span className="block text-[11px] text-purple-500">
+                      {getSoldePoints(client.solde_points)} pts
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <button
+          onClick={() => setShowClientForm(true)}
+          className="w-full py-1.5 border-2 border-dashed border-gray-300 rounded-lg
+                     text-xs text-gray-500 hover:border-blue-400 hover:text-blue-600
+                     flex items-center justify-center gap-1.5 transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Nouveau client
+        </button>
+      </>
+    )}
+
+    {showClientForm && (
+      <div className="space-y-2">
+        <input type="text" placeholder="Nom complet"
+               value={newClient.nom}
+               onChange={e => setNewClient(c => ({ ...c, nom: e.target.value }))}
+               className="w-full px-3 py-2 border border-gray-200 rounded-lg
+                          text-sm focus:ring-2 focus:ring-blue-500" />
+        <input type="tel" placeholder="Téléphone"
+               value={newClient.telephone}
+               onChange={e => setNewClient(c => ({ ...c, telephone: e.target.value }))}
+               className="w-full px-3 py-2 border border-gray-200 rounded-lg
+                          text-sm focus:ring-2 focus:ring-blue-500" />
+        <div className="flex gap-2">
+          <button onClick={() => { setShowClientForm(false); setNewClient({ nom: '', telephone: '' }); }}
+                  className="flex-1 py-1.5 border border-gray-200 rounded-lg
+                             text-xs text-gray-600 hover:bg-gray-50">
+            Annuler
+          </button>
+          <button onClick={createClient}
+                  className="flex-1 py-1.5 bg-blue-600 text-white rounded-lg
+                             text-xs hover:bg-blue-700">
+            Créer
+          </button>
+        </div>
+      </div>
+    )}
+
+    {selectedClient && (
+      <div className="bg-blue-50 border border-blue-200 rounded-xl p-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-blue-200 rounded-full flex items-center
+                            justify-center text-blue-700 text-sm font-medium">
+              {selectedClient.nom.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <p className="text-sm font-medium text-gray-900">{selectedClient.nom}</p>
+              <p className="text-xs text-gray-500">{selectedClient.telephone}</p>
+            </div>
+          </div>
+          <button onClick={() => setSelectedClient(null)}
+                  className="text-gray-400 hover:text-red-500 transition-colors">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="mt-2.5 pt-2.5 border-t border-blue-200 grid grid-cols-2 gap-2 text-xs">
+          <div>
+            <span className="text-gray-500">Dette actuelle</span>
+            <p className="font-medium text-red-600">{fmt(getSoldeDette(selectedClient.solde_dette))}</p>
+          </div>
+          <div>
+            <span className="text-gray-500">Points fidélité</span>
+            <p className="font-medium text-purple-600">{getSoldePoints(selectedClient.solde_points)} pts</p>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+
+  {pointsAGagner > 0 && (
+    <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border border-purple-200
+                    rounded-lg text-sm text-purple-700 shrink-0">
+      <Gift className="w-4 h-4 shrink-0" />
+      <span>Points à gagner : <span className="font-semibold">{pointsAGagner} pts</span></span>
+    </div>
+  )}
+
+  {lignesPaiement.length > 0 && (
+    <div className="space-y-1.5 shrink-0">
+      {lignesPaiement.map(l => (
+        <div key={l.id} className="flex items-center justify-between px-3 py-2
+                                    bg-gray-50 rounded-lg text-sm">
+          <div className="flex items-center gap-2">
+            {PAYMENT_METHODS.find(pm => pm.value === l.mode)?.icon}
+            <span className="font-medium text-gray-700">
+              {PAYMENT_METHODS.find(pm => pm.value === l.mode)?.label}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-gray-900">{fmt(l.montant)}</span>
+            <button onClick={() => supprimerLignePaiement(l.id)}
+                    className="text-gray-300 hover:text-red-500 transition-colors">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )}
+</div>
+</div>
+
+              {/* ── Colonne droite : saisie du paiement ── */}
+              <div className="p-5 flex flex-col gap-3 min-h-0">
+                {resteAPayer > 0 ? (
+                  <>
+                    <p className="text-xs font-medium text-gray-400 uppercase tracking-wide shrink-0">
+                      Mode de paiement
                     </p>
-                    <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-200
-                                    focus-within:border-blue-400 focus-within:bg-white transition-colors">
-                      <input
-                        ref={receivedRef}
-                        type="number"
-                        step="1"
-                        value={montantEnCours || ''}
-                        onChange={e => setMontantEnCours(parseFloat(e.target.value) || 0)}
-                        placeholder="0"
-                        className="w-full bg-transparent text-2xl font-medium text-gray-900
-                                   outline-none placeholder-gray-300"
-                      />
-                      <span className="text-xs text-gray-400">francs CFA</span>
+                    <div className="grid grid-cols-2 gap-2 shrink-0">
+                      {PAYMENT_METHODS.map(pm => (
+                        <button
+                          key={pm.value}
+                          onClick={() => {
+                            setModeEnCours(pm.value);
+                            setMontantEnCours(pm.value === 'especes' ? 0 : resteAPayer);
+                          }}
+                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border
+                                      text-sm font-medium transition-all
+                            ${modeEnCours === pm.value
+                              ? 'border-blue-500 bg-blue-50 text-blue-700'
+                              : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                            }`}
+                        >
+                          {pm.icon}
+                          {pm.label}
+                        </button>
+                      ))}
                     </div>
 
-                    {modeEnCours === 'especes' && montantEnCours > 0 && (
-                      <div className="mt-2 flex items-center justify-between px-3 py-2
-                                      bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
-                        <span>
-                          {montantEnCours > resteAPayer ? 'Monnaie à rendre' : 'Affecté à la vente'}
-                        </span>
-                        <span className="font-medium">
-                          {montantEnCours > resteAPayer
-                            ? fmt(montantEnCours - resteAPayer)
-                            : fmt(montantEnCours)}
-                        </span>
-                      </div>
+                    {modeEnCours === 'dette' && !selectedClient && (
+                      <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 shrink-0">
+                        Sélectionnez un client à gauche pour un paiement à crédit
+                      </p>
                     )}
 
-                    <button
-                      onClick={ajouterLignePaiement}
-                      disabled={montantEnCours <= 0 || (modeEnCours === 'dette' && !selectedClient)}
-                      className="w-full py-2.5 mt-3 bg-blue-600 text-white rounded-lg text-sm font-medium
-                                hover:bg-blue-700 transition-colors
-                                disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
-                    >
-                      Ajouter ce paiement
-                    </button>
+                    <div className="shrink-0">
+                      <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-2">
+                        {modeEnCours === 'especes' ? 'Montant reçu' : 'Montant'}
+                      </p>
+                      <div className="bg-gray-50 rounded-xl px-4 py-3 border border-gray-200
+                                      focus-within:border-blue-400 focus-within:bg-white transition-colors">
+                        <input
+                          ref={receivedRef}
+                          type="number"
+                          step="1"
+                          value={montantEnCours || ''}
+                          onChange={e => setMontantEnCours(parseFloat(e.target.value) || 0)}
+                          placeholder="0"
+                          className="w-full bg-transparent text-2xl font-medium text-gray-900
+                                     outline-none placeholder-gray-300"
+                        />
+                        <span className="text-xs text-gray-400">francs CFA</span>
+                      </div>
+
+                      {/* NEW — billets rapides pour l'espèce : le geste le plus fréquent en 1 clic */}
+                      {modeEnCours === 'especes' && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          <button
+                            onClick={() => setMontantEnCours(resteAPayer)}
+                            className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-blue-200
+                                       bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                          >
+                            Exact ({fmt(resteAPayer)})
+                          </button>
+                          {BILLETS_RAPIDES.filter(b => b >= resteAPayer).slice(0, 3).map(b => (
+                            <button
+                              key={b}
+                              onClick={() => setMontantEnCours(b)}
+                              className="px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200
+                                         text-gray-600 hover:bg-gray-50 transition-colors"
+                            >
+                              {fmt(b)}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {modeEnCours === 'especes' && montantEnCours > 0 && (
+                        <div className="mt-2 flex items-center justify-between px-3 py-2
+                                        bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                          <span>
+                            {montantEnCours > resteAPayer ? 'Monnaie à rendre' : 'Affecté à la vente'}
+                          </span>
+                          <span className="font-medium">
+                            {montantEnCours > resteAPayer
+                              ? fmt(montantEnCours - resteAPayer)
+                              : fmt(montantEnCours)}
+                          </span>
+                        </div>
+                      )}
+
+                      <button
+                        onClick={() => ajouterLignePaiement()}
+                        disabled={montantEnCours <= 0 || (modeEnCours === 'dette' && !selectedClient)}
+                        className="w-full py-2.5 mt-3 bg-blue-600 text-white rounded-lg text-sm font-medium
+                                  hover:bg-blue-700 transition-colors
+                                  disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
+                      >
+                        Ajouter ce paiement
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center gap-2 text-green-600">
+                    <CheckCircle className="w-10 h-10" />
+                    <p className="text-sm font-medium">Montant entièrement couvert</p>
+                    <p className="text-xs text-gray-400">Confirmez pour enregistrer la vente</p>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
-            <div className="px-5 py-4 border-t border-gray-100 flex gap-2">
+            {/* Footer fixe : actions toujours visibles, jamais à scroller pour y accéder */}
+            <div className="px-5 py-4 border-t border-gray-100 flex gap-2 shrink-0">
               <button
                 onClick={() => { setShowPaymentModal(false); resetPaymentState(); }}
                 disabled={loading}

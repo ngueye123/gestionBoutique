@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { DashboardStats } from '../types';
 import { useAuthStore } from '../store/authStore';
+import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { toast } from 'sonner';
 
 type PeriodType = '7days' | 'month' | 'last_month' | 'custom';
@@ -60,6 +61,7 @@ function MetricCard({ label, value, sub, accentColor, valueColor, icon }: Metric
 function Dashboard() {
   const [stats, setStats]               = useState<DashboardStats | null>(null);
   const [loading, setLoading]           = useState(true);
+  const [resetting, setResetting]       = useState(false);
   const [period, setPeriod]             = useState<PeriodType>('7days');
   const [customDates, setCustomDates]   = useState({ start: '', end: '' });
   const [showCustom, setShowCustom]     = useState(false);
@@ -103,6 +105,33 @@ function Dashboard() {
   };
 
   useEffect(() => { if (token) fetchStats(); }, [token, period]);
+
+  const handleResetStats = async () => {
+    if (!token) return;
+    if (!window.confirm('Confirmez-vous la réinitialisation des statistiques ? Cela supprimera toutes les ventes et dépenses.')) {
+      return;
+    }
+
+    setResetting(true);
+    try {
+      const res = await fetchWithAuth(`${API_URL}/dashboard/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        toast.success(data.message || 'Statistiques réinitialisées.');
+        fetchStats();
+      } else {
+        toast.error(data?.message || 'Impossible de réinitialiser les statistiques');
+      }
+    } catch {
+      toast.error('Erreur de communication avec le serveur');
+    } finally {
+      setResetting(false);
+    }
+  };
 
   // ── Graphique CA / Dépenses / Bénéfice ───────────────────────────────────
 
@@ -293,10 +322,23 @@ function Dashboard() {
             {stats.period?.label ?? PERIOD_LABELS[period]}
           </p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-2 rounded-full border border-gray-200
-                        bg-gray-50 text-sm text-gray-600">
-          {roleInfo.icon}
-          <span>{roleInfo.label}</span>
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-full border border-gray-200
+                          bg-gray-50 text-sm text-gray-600">
+            {roleInfo.icon}
+            <span>{roleInfo.label}</span>
+          </div>
+          {userType === 'patron' && (
+            <button
+              type="button"
+              onClick={handleResetStats}
+              disabled={resetting}
+              className="px-3 py-2 rounded-lg bg-red-600 text-white text-sm font-medium
+                         hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-red-400"
+            >
+              {resetting ? 'Réinitialisation...' : 'Réinitialiser les stats'}
+            </button>
+          )}
         </div>
       </div>
 

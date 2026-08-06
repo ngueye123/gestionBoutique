@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\Vente;
+use App\Models\Depense;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Carbon\Carbon;
@@ -141,6 +142,28 @@ class DashboardController extends Controller
                 'label'      => $this->getPeriodLabel($period, $startDate, $endDate),
             ],
         ];
+    }
+
+    /**
+     * Réinitialise les statistiques du dashboard pour le patron connecté.
+     *
+     * Supprime les ventes et dépenses du patron, sans toucher aux produits.
+     */
+    public function resetStats(Request $request): JsonResponse
+    {
+        $patron = $this->assertPatron();
+
+        DB::transaction(function () use ($patron) {
+            Depense::where('utilisateur_id', $patron->id)->delete();
+            Vente::where('utilisateur_id', $patron->id)->delete();
+        });
+
+        $this->dashboardCache->invalidate($patron->id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Statistiques réinitialisées. Ventes et dépenses supprimées.',
+        ]);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

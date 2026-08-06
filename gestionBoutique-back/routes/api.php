@@ -76,6 +76,7 @@ Route::middleware(['jwt.custom'])->group(function () {
 
     // ── Dashboard ─────────────────────────────────────────────────────────
     Route::get('/dashboard/stats', [DashboardController::class, 'getStats']);
+    Route::post('/dashboard/reset', [DashboardController::class, 'resetStats']);
 
     // ── Employés ──────────────────────────────────────────────────────────
     Route::prefix('employes')->group(function () {

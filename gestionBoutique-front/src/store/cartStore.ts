@@ -24,7 +24,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     if (existingItem) {
       const updatedItems = items.map(item =>
         item.id === product.id
-          ? { ...item, quantity: item.quantity + (item.unit_type === 'piece' ? 1 : 0) }
+          ? { ...item, quantity: item.quantity + 1 }
           : item
       );
       set({ items: updatedItems, total: calculateTotal(updatedItems) });
@@ -32,7 +32,7 @@ export const useCartStore = create<CartState>((set, get) => ({
       const uniteVente = defaultSaleUnit(product.unit_type, product.unit_reference);
       const newItem: CartItem = {
         ...product,
-        quantity: product.unit_type === 'piece' ? 1 : 0,
+        quantity: 1,
         unite_vente: uniteVente,
         originalPrice: product.price,
         isOverridden: false,
