@@ -9,8 +9,20 @@ import { EmployeFiltre, VenteHistorique, VentesHistoriqueResponse } from '../typ
 import { InvoiceButton } from '../components/InvoiceButton';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
-const fmt = (n: number) =>
-  Number(n || 0).toLocaleString('fr-FR', { minimumFractionDigits: 0 }) + ' F';
+/** Formatte un montant sans arrondi, préservant les décimales telles qu'en base */
+const fmt = (n: number | null | undefined) => {
+  if (n === null || n === undefined || !isFinite(n as number)) return '0 F';
+  const s = String(n);
+  if (s.toLowerCase().includes('e')) {
+    return (n as number).toLocaleString('fr-FR', { maximumFractionDigits: 6 }) + ' F';
+  }
+  const [intPart, fracPart] = s.split('.');
+  const intNumber = Number(intPart);
+  const intFormatted = intNumber.toLocaleString('fr-FR');
+  if (!fracPart || /^0+$/.test(fracPart)) return `${intFormatted} F`;
+  const fracTrimmed = fracPart.replace(/0+$/u, '');
+  return `${intFormatted},${fracTrimmed} F`;
+};
 
 const MOYEN_LABELS: Record<string, string> = {
   especes: 'Espèces',

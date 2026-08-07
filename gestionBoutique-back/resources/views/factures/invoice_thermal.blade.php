@@ -15,7 +15,7 @@
             min-height: auto;
             height: auto;
         }
-        
+
         * {
             margin: 0;
             padding: 0;
@@ -100,6 +100,7 @@
         .debt-table td:last-child {
             text-align: right;
             font-weight: bold;
+            white-space: nowrap;
         }
 
         .debt-separator {
@@ -114,38 +115,33 @@
             padding: 1.5mm 0;
         }
 
-        .products-table,
-        .totals-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 7px;
-            table-layout: fixed;
+        .product-line {
+            padding: 0.5mm 0;
         }
 
-        .products-table td,
-        .totals-table td {
-            padding: 0.5mm 1mm;
-            vertical-align: top;
+        .product-line .name {
+            font-weight: bold;
+            font-size: 7px;
             word-break: break-word;
             overflow-wrap: anywhere;
         }
 
-        .product-name {
-            width: 45%;
-            font-weight: bold;
+        .product-line .detail-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            font-size: 7px;
+            margin-top: 0.3mm;
         }
 
-        .product-qty-price {
-            width: 30%;
-            text-align: center;
-            white-space: normal;
+        .product-line .qty-price {
+            white-space: nowrap;
         }
 
-        .product-total {
-            width: 25%;
-            text-align: right;
+        .product-line .total {
+            white-space: nowrap;
             font-weight: bold;
-            white-space: normal;
+            margin-left: 2mm;
         }
 
         .totals {
@@ -165,6 +161,7 @@
         .totals-table td:last-child {
             text-align: right;
             font-weight: bold;
+            white-space: nowrap;
         }
 
         .total-final {
@@ -228,12 +225,12 @@
                 <div class="debt-alert">
                     <div style="text-align: center; font-weight: bold;">CREDIT</div>
                     <table class="debt-table">
-                        <tr><td>Dette avant:</td><td>{{ number_format($ancienSolde, 0, ',', ' ') }} F</td></tr>
-                        <tr><td>Cette facture:</td><td>{{ number_format($vente->total, 0, ',', ' ') }} F</td></tr>
+                        <tr><td>Dette avant:</td><td>{{ number_format($ancienSolde, 0, ',', "\u{00A0}") }}&nbsp;F</td></tr>
+                        <tr><td>Cette facture:</td><td>{{ number_format($vente->total, 0, ',', "\u{00A0}") }}&nbsp;F</td></tr>
                     </table>
                     <div class="debt-separator"></div>
                     <table class="debt-table">
-                        <tr><td>NOUVELLE DETTE:</td><td>{{ number_format($nouveauSolde, 0, ',', ' ') }} F</td></tr>
+                        <tr><td>NOUVELLE DETTE:</td><td>{{ number_format($nouveauSolde, 0, ',', "\u{00A0}") }}&nbsp;F</td></tr>
                     </table>
                 </div>
             @endif
@@ -241,29 +238,29 @@
     @endif
 
     <div class="products">
-        <table class="products-table">
-            @foreach($vente->details as $detail)
-                <tr>
-                    <td class="product-name">{{ $detail->nom_produit }}</td>
-                    <td class="product-qty-price">{{ rtrim(rtrim(number_format($detail->quantite, 3, ',', ' '), '0'), ',') }}{{ $detail->unite_vente }} x {{ number_format($detail->prix_unitaire, 0, ',', ' ') }} F/{{ $detail->unite_prix }}</td>
-                    <td class="product-total">{{ number_format($detail->sous_total, 0, ',', ' ') }} F</td>
-                </tr>
-            @endforeach
-        </table>
+        @foreach($vente->details as $detail)
+            <div class="product-line">
+                <div class="name">{{ $detail->nom_produit }}</div>
+                <div class="detail-row">
+                    <span class="qty-price">{{ rtrim(rtrim(number_format($detail->quantite, 3, ',', ' '), '0'), ',') }}{{ $detail->unite_vente }}&nbsp;x&nbsp;{{ number_format($detail->prix_unitaire, 0, ',', "\u{00A0}") }}&nbsp;F/{{ $detail->unite_prix }}</span>
+                    <span class="total">{{ number_format($detail->sous_total, 0, ',', "\u{00A0}") }}&nbsp;F</span>
+                </div>
+            </div>
+        @endforeach
     </div>
 
     <div class="totals">
         <table class="totals-table">
-            <tr><td>Sous-total:</td><td>{{ number_format($vente->total, 0, ',', ' ') }} F</td></tr>
+            <tr><td>Sous-total:</td><td>{{ number_format($vente->total, 0, ',', "\u{00A0}") }}&nbsp;F</td></tr>
             @if($vente->moyen_paiement === 'especes')
-                <tr><td>Reçu:</td><td>{{ number_format($vente->montant_recu, 0, ',', ' ') }} F</td></tr>
+                <tr><td>Reçu:</td><td>{{ number_format($vente->montant_recu, 0, ',', "\u{00A0}") }}&nbsp;F</td></tr>
                 @if($vente->monnaie > 0)
-                    <tr><td>Monnaie:</td><td>{{ number_format($vente->monnaie, 0, ',', ' ') }} F</td></tr>
+                    <tr><td>Monnaie:</td><td>{{ number_format($vente->monnaie, 0, ',', "\u{00A0}") }}&nbsp;F</td></tr>
                 @endif
             @endif
             <tr class="total-final">
                 <td>TOTAL:</td>
-                <td>{{ number_format($vente->total, 0, ',', ' ') }} F</td>
+                <td>{{ number_format($vente->total, 0, ',', "\u{00A0}") }}&nbsp;F</td>
             </tr>
         </table>
     </div>

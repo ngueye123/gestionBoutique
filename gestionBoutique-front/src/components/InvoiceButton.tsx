@@ -11,6 +11,8 @@ interface InvoiceButtonProps {
   venteId?: number;
   venteReference?: string;
   variant?: 'primary' | 'secondary' | 'icon';
+  /** Format par défaut pour la prévisualisation lorsque le bouton principal est utilisé */
+  defaultFormat?: 'a4' | 'thermal';
 }
 
 export function InvoiceButton({ 
@@ -18,7 +20,8 @@ export function InvoiceButton({
   saleReference,
   venteId,
   venteReference,
-  variant = 'primary' 
+  variant = 'primary',
+  defaultFormat = 'a4',
 }: InvoiceButtonProps) {
   const [isDownloading, setIsDownloading] = useState(false);
   const [showFormatMenu, setShowFormatMenu] = useState(false);
@@ -213,7 +216,7 @@ export function InvoiceButton({
   return (
     <div className="flex flex-col space-y-2">
       <button
-        onClick={() => previewInvoice('a4')}
+        onClick={() => previewInvoice(defaultFormat)}
         className="w-full inline-flex items-center justify-center px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600"
       >
         <Eye className="w-5 h-5 mr-2" />
