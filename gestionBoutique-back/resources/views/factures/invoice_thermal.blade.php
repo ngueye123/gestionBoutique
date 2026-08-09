@@ -66,48 +66,45 @@
             margin-bottom: 0.5mm;
         }
 
-        .client-section {
+        /* --- Bloc client --- */
+        .client-table {
+            width: 100%;
+            border-collapse: collapse;
+            border: 1px solid #000;
             font-size: 7px;
             margin-bottom: 2mm;
-            border: 1px solid #000;
-            padding: 1.5mm;
+        }
+
+        .client-table td {
+            padding: 0.8mm 1.5mm;
         }
 
         .client-title {
             font-weight: bold;
             text-align: center;
-            margin-bottom: 1mm;
+            border-bottom: 1px solid #000;
         }
 
-        .debt-alert {
-            border: 1px solid #000;
-            padding: 1.5mm;
-            margin-top: 1.5mm;
-            font-size: 6px;
-        }
-
-        .debt-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 6px;
-            margin-top: 1mm;
-        }
-
-        .debt-table td {
-            padding: 0.5mm 0;
-        }
-
-        .debt-table td:last-child {
-            text-align: right;
+        .debt-title {
             font-weight: bold;
-            white-space: nowrap;
-        }
-
-        .debt-separator {
+            text-align: center;
             border-top: 1px solid #000;
-            margin: 1mm 0;
+            padding-top: 1.2mm;
         }
 
+        /* lignes pré-formatées (alignement fait en PHP, pas en CSS) */
+        .pre-line {
+            white-space: pre;
+            font-size: 6px;
+        }
+
+        .pre-line.final {
+            font-weight: bold;
+            border-top: 1px solid #000;
+            padding-top: 1mm;
+        }
+
+        /* --- Produits --- */
         .products {
             margin-bottom: 1mm;
             border-top: 1px dashed #000;
@@ -116,63 +113,31 @@
         }
 
         .product-line {
-            padding: 0.5mm 0;
-        }
-
-        .product-line .name {
+            white-space: pre;
+            font-size: 6.5px;
             font-weight: bold;
-            font-size: 7px;
-            word-break: break-word;
-            overflow-wrap: anywhere;
+            padding: 0.4mm 0;
         }
 
-        .product-line .detail-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: baseline;
-            font-size: 7px;
-            margin-top: 0.3mm;
-        }
-
-        .product-line .qty-price {
-            white-space: nowrap;
-        }
-
-        .product-line .total {
-            white-space: nowrap;
-            font-weight: bold;
-            margin-left: 2mm;
-        }
-
+        /* --- Totaux --- */
         .totals {
-            font-size: 7px;
             margin-bottom: 2mm;
         }
 
-        .totals-table {
-            width: 100%;
-            border-collapse: collapse;
+        .totals-line {
+            white-space: pre;
+            font-size: 7px;
+            padding: 0.4mm 0;
         }
 
-        .totals-table td {
-            padding: 0.5mm 0;
-        }
-
-        .totals-table td:last-child {
-            text-align: right;
-            font-weight: bold;
-            white-space: nowrap;
-        }
-
-        .total-final {
-            border-top: 2px solid #000;
-            border-bottom: 2px solid #000;
+        .total-final-line {
+            white-space: pre;
             font-weight: bold;
             font-size: 9px;
-        }
-
-        .total-final td {
+            border-top: 2px solid #000;
+            border-bottom: 2px solid #000;
             padding: 1.5mm 0;
+            margin-top: 0.5mm;
         }
 
         .footer {
@@ -216,53 +181,32 @@
     </div>
 
     @if($vente->client)
-        <div class="client-section">
-            <div class="client-title">CLIENT</div>
-            <div>{{ $vente->client->nom }}</div>
-            <div>{{ $vente->client->telephone }}</div>
+        <table class="client-table">
+            <tr><td class="client-title">CLIENT</td></tr>
+            <tr><td>{{ $vente->client->nom }}</td></tr>
+            <tr><td>{{ $vente->client->telephone }}</td></tr>
 
-            @if($vente->moyen_paiement === 'dette' && $ancienSolde !== null && $nouveauSolde !== null)
-                <div class="debt-alert">
-                    <div style="text-align: center; font-weight: bold;">CREDIT</div>
-                    <table class="debt-table">
-                        <tr><td>Dette avant:</td><td>{{ number_format($ancienSolde, 0, ',', "\u{00A0}") }}&nbsp;F</td></tr>
-                        <tr><td>Cette facture:</td><td>{{ number_format($vente->total, 0, ',', "\u{00A0}") }}&nbsp;F</td></tr>
-                    </table>
-                    <div class="debt-separator"></div>
-                    <table class="debt-table">
-                        <tr><td>NOUVELLE DETTE:</td><td>{{ number_format($nouveauSolde, 0, ',', "\u{00A0}") }}&nbsp;F</td></tr>
-                    </table>
-                </div>
+            @if(!empty($debtLines))
+                <tr><td class="debt-title">CREDIT</td></tr>
+                @foreach($debtLines as $line)
+                    <tr><td class="pre-line">{{ $line }}</td></tr>
+                @endforeach
+                <tr><td class="pre-line final">{{ $debtFinalLine }}</td></tr>
             @endif
-        </div>
+        </table>
     @endif
 
     <div class="products">
-        @foreach($vente->details as $detail)
-            <div class="product-line">
-                <div class="name">{{ $detail->nom_produit }}</div>
-                <div class="detail-row">
-                    <span class="qty-price">{{ rtrim(rtrim(number_format($detail->quantite, 3, ',', ' '), '0'), ',') }}{{ $detail->unite_vente }}&nbsp;x&nbsp;{{ number_format($detail->prix_unitaire, 0, ',', "\u{00A0}") }}&nbsp;F/{{ $detail->unite_prix }}</span>
-                    <span class="total">{{ number_format($detail->sous_total, 0, ',', "\u{00A0}") }}&nbsp;F</span>
-                </div>
-            </div>
+        @foreach($productLines as $line)
+            <div class="product-line">{{ $line }}</div>
         @endforeach
     </div>
 
     <div class="totals">
-        <table class="totals-table">
-            <tr><td>Sous-total:</td><td>{{ number_format($vente->total, 0, ',', "\u{00A0}") }}&nbsp;F</td></tr>
-            @if($vente->moyen_paiement === 'especes')
-                <tr><td>Reçu:</td><td>{{ number_format($vente->montant_recu, 0, ',', "\u{00A0}") }}&nbsp;F</td></tr>
-                @if($vente->monnaie > 0)
-                    <tr><td>Monnaie:</td><td>{{ number_format($vente->monnaie, 0, ',', "\u{00A0}") }}&nbsp;F</td></tr>
-                @endif
-            @endif
-            <tr class="total-final">
-                <td>TOTAL:</td>
-                <td>{{ number_format($vente->total, 0, ',', "\u{00A0}") }}&nbsp;F</td>
-            </tr>
-        </table>
+        @foreach($totalsLines as $line)
+            <div class="totals-line">{{ $line }}</div>
+        @endforeach
+        <div class="total-final-line">{{ $totalFinalLine }}</div>
     </div>
 
     <div class="footer">
