@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   TrendingDown, TrendingUp, Settings, RefreshCw,
-  Download, ChevronRight, Filter, X, AlertTriangle,
+  Printer, Loader2, ChevronRight, Filter, X, AlertTriangle,
   Wallet, Users, ArrowDownLeft, ArrowUpRight, Clock,
   CheckCircle, BarChart3, ChevronDown,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
+import { getApiErrorMessage } from '../lib/apiError';
 import { BilanSection } from '../components/BilanSection';
 import { HistoriqueBilans } from '../components/HistoriqueBilans';
 import { useCaisse } from '../hooks/useCaisse';
@@ -124,10 +125,11 @@ export default function Caisse() {
   const {
     caisse, statut, mouvements,
     chargerMaCaisse, effectuerMouvement,
-    telechargerTicket, calculerBilan,
+    imprimerTicket, calculerBilan,
     telechargerTicketBilan, chargerHistoriqueBilans,
   } = useCaisse();
 
+  const [impressionEnCours, setImpressionEnCours] = useState<number | null>(null);
   const [toutes, setToutes]                         = useState<VueCaisse[]>([]);
   const [loading, setLoading]                       = useState(true);
   const [isPatron, setIsPatron]                     = useState(false);
@@ -177,7 +179,7 @@ export default function Caisse() {
         }
       }
     } catch {
-      toast.error('Erreur de chargement');
+      toast.error('Impossible de charger les informations de caisse. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }
@@ -242,6 +244,20 @@ export default function Caisse() {
 
   // ── Mouvement ─────────────────────────────────────────────────────────────
 
+  const handleImprimerTicket = async (mouvementId: number) => {
+    setImpressionEnCours(mouvementId);
+    try {
+      const result = await imprimerTicket(mouvementId);
+      if (result.success) {
+        toast.success('Ticket envoyé à l\'imprimante');
+      } else {
+        toast.error(result.error || 'Impossible d\'imprimer le ticket');
+      }
+    } finally {
+      setImpressionEnCours(null);
+    }
+  };
+
   const handleMouvement = async () => {
     if (!montantMvt || parseFloat(montantMvt) <= 0) { toast.error('Montant invalide'); return; }
     setLoadingMvt(true);
@@ -252,10 +268,13 @@ export default function Caisse() {
         setMontantMvt(''); setNoteMvt(''); setShowMouvForm(false);
         charger();
       } else {
-        toast.error(data.message);
+        toast.error(getApiErrorMessage(data, 'Impossible d\'enregistrer le mouvement.'));
       }
-    } catch { toast.error('Erreur réseau'); }
-    finally  { setLoadingMvt(false); }
+    } catch (error) {
+      toast.error("Impossible d'enregistrer le mouvement. Vérifiez votre connexion.");
+    } finally {
+      setLoadingMvt(false);
+    }
   };
 
   // ── Plafond ───────────────────────────────────────────────────────────────
@@ -278,9 +297,9 @@ export default function Caisse() {
         setShowPlafondForm(false);
         charger();
       } else {
-        toast.error(data.message);
+        toast.error(getApiErrorMessage(data, 'Impossible de mettre à jour le plafond.')); 
       }
-    } catch { toast.error('Erreur réseau'); }
+    } catch { toast.error('Impossible de mettre à jour le plafond. Vérifiez votre connexion.'); }
     finally  { setLoadingPlafond(false); }
   };
 
@@ -831,11 +850,16 @@ export default function Caisse() {
                     </span>
                     {m.ticket_reference && (
                       <button
-                        onClick={() => telechargerTicket(m.id, m.ticket_reference!)}
-                        title={`Ticket ${m.ticket_reference}`}
-                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition"
+                        onClick={() => handleImprimerTicket(m.id)}
+                        disabled={impressionEnCours === m.id}
+                        title={`Imprimer le ticket ${m.ticket_reference}`}
+                        className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-100 hover:bg-blue-100 text-gray-400 hover:text-blue-600 transition disabled:opacity-50"
                       >
-                        <Download className="w-3.5 h-3.5" />
+                        {impressionEnCours === m.id ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Printer className="w-3.5 h-3.5" />
+                        )}
                       </button>
                     )}
                   </div>

@@ -27,10 +27,10 @@ function ResendVerification({ email }: ResendVerificationProps) {
         toast.success('Email de vérification renvoyé !');
         setTimeout(() => setSent(false), 60000); // Réactiver après 1 minute
       } else {
-        toast.error(result.message);
+        toast.error(result.message || 'Impossible de renvoyer l\'email.');
       }
     } catch (error) {
-      toast.error('Erreur lors de l\'envoi de l\'email');
+      toast.error('Impossible de renvoyer l\'email. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }

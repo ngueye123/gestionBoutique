@@ -49,7 +49,7 @@ export default function Employes() {
       const list: Employe[] = Array.isArray(data) ? data : data.employes ?? [];
       setEmployes(list);
     } catch (err: any) {
-      toast.error('Impossible de charger les employés.');
+      toast.error('Impossible de charger la liste des employés. Vérifiez votre connexion.');
     }
   };
 
@@ -100,7 +100,7 @@ export default function Employes() {
         toast.error(data.message || "Erreur lors de l'ajout de l'employé.");
       }
     } catch {
-      toast.error("Erreur lors de l'ajout de l'employé.");
+      toast.error("Impossible d'ajouter l'employé. Vérifiez votre connexion.");
     } finally {
       setLoading(false);
     }
@@ -125,7 +125,7 @@ export default function Employes() {
         toast.error(data.message || 'Erreur lors de la suppression.');
       }
     } catch {
-      toast.error('Erreur lors de la suppression.');
+      toast.error('Impossible de supprimer l\'employé. Vérifiez votre connexion.');
     } finally {
       setDeletingId(null);
     }
@@ -149,7 +149,7 @@ export default function Employes() {
         toast.error(data.message || 'Erreur lors de la mise à jour du rôle.');
       }
     } catch {
-      toast.error('Erreur lors de la mise à jour du rôle.');
+      toast.error('Impossible de mettre à jour le rôle. Vérifiez votre connexion.');
     }
   };
 

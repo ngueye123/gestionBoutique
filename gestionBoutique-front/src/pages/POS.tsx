@@ -10,7 +10,8 @@ import { toast } from 'sonner';
 import { Product, Client, FideliteConfig } from '../types';
 import { useCartStore } from '../store/cartStore';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
-import { InvoiceButton } from '../components/InvoiceButton';
+import { getApiErrorMessage } from '../lib/apiError';
+import { InvoiceButton, useInvoicePrint } from '../components/InvoiceButton';
 import { InvoiceSearch } from '../components/InvoiceSearch';
 import { CaisseBloqueeModal } from '../components/CaisseBloqueeModal';
 import { PriceOverrideModal } from '../components/PriceOverrideModal';
@@ -98,8 +99,12 @@ export default function POS() {
   const [lastSaleId, setLastSaleId]               = useState<number | null>(null);
   const [lastSaleReference, setLastSaleReference] = useState('');
   const [lastSalePoints, setLastSalePoints]       = useState<number>(0);
+  const [showTicketPrompt, setShowTicketPrompt]   = useState(false);
+  const [isPrintingTicket, setIsPrintingTicket]   = useState(false);
+  const [defaultInvoiceFormat, setDefaultInvoiceFormat] = useState<'a4' | 'thermal'>('thermal');
 
   const { items, addItem, removeItem, updateQuantity, changeUnite, overridePrice, total, clearCart } = useCartStore();
+  const { printInvoice: printLastSaleInvoice } = useInvoicePrint();
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
   const receivedRef = useRef<HTMLInputElement>(null);
   const searchRef   = useRef<HTMLInputElement>(null); // NEW — pour garder le focus en continu
@@ -108,6 +113,7 @@ export default function POS() {
 
   useEffect(() => { fetchProducts(); }, []);
   useEffect(() => { fetchFideliteConfig(); }, []);
+  useEffect(() => { fetchInvoiceFormat(); }, []);
   useEffect(() => { searchRef.current?.focus(); }, []); // NEW — prêt à scanner/taper dès l'ouverture
 
   useEffect(() => {
@@ -138,7 +144,8 @@ export default function POS() {
       const res  = await fetchWithAuth(`${API_URL}/products`);
       const data = await res.json();
       if (data.success) setProducts(data.products);
-    } catch { toast.error('Erreur lors du chargement des produits'); }
+      else toast.error(getApiErrorMessage(data, 'Impossible de charger les produits.'));
+    } catch { toast.error('Impossible de charger les produits. Vérifiez votre connexion.'); }
   };
 
   const fetchFideliteConfig = async () => {
@@ -147,6 +154,14 @@ export default function POS() {
       const data = await res.json();
       if (data.success) setFideliteConfig(data.config);
     } catch { /* dégradation silencieuse */ }
+  };
+
+  const fetchInvoiceFormat = async () => {
+    try {
+      const res  = await fetchWithAuth(`${API_URL}/invoice-settings`);
+      const data = await res.json();
+      if (data.success) setDefaultInvoiceFormat(data.default_format);
+    } catch { /* dégradation silencieuse — reste sur 'thermal' */ }
   };
 
   const searchClients = async () => {
@@ -174,8 +189,10 @@ export default function POS() {
         setShowClientForm(false);
         setNewClient({ nom: '', telephone: '' });
         setClientSearch('');
-      } else { toast.error(result.message); }
-    } catch { toast.error('Erreur lors de la création du client'); }
+      } else {
+        toast.error(getApiErrorMessage(result, 'Impossible de créer le client.'));
+      }
+    } catch { toast.error('Impossible de créer le client. Vérifiez votre connexion.'); }
   };
 
   // ── Produits : ajout rapide via Entrée (scan douchette ou frappe clavier) ──
@@ -308,15 +325,16 @@ export default function POS() {
         }
 
         setShowSuccessModal(true);
+        setShowTicketPrompt(true);
         clearCart();
         setShowPaymentModal(false);
         resetPaymentState();
         fetchProducts();
         setTimeout(() => searchRef.current?.focus(), 150); // NEW — prêt pour la vente suivante
       } else {
-        toast.error(result.message || 'Erreur lors de la vente');
+        toast.error(getApiErrorMessage(result, 'Impossible d\'enregistrer la vente.'));
       }
-    } catch { toast.error('Erreur lors du traitement de la vente'); }
+    } catch { toast.error('Impossible d\'enregistrer la vente. Vérifiez votre connexion.'); }
     finally { setLoading(false); }
   };
 
@@ -1004,26 +1022,73 @@ export default function POS() {
               </p>
             )}
             {lastSalePoints === 0 && <div className="mb-6" />}
-            <div className="space-y-2">
-              <InvoiceButton
-                venteId={lastSaleId}
-                venteReference={lastSaleReference}
-                variant="primary"
-                defaultFormat="thermal"
-              />
-              <button
-                onClick={() => {
-                  setShowSuccessModal(false);
-                  setLastSaleId(null);
-                  setLastSaleReference('');
-                  setLastSalePoints(0);
-                }}
-                className="w-full py-2.5 border border-gray-200 rounded-lg text-sm
-                           text-gray-600 hover:bg-gray-50 transition-colors"
-              >
-                Fermer
-              </button>
-            </div>
+            {showTicketPrompt ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 text-left">
+                  <p className="text-sm font-medium text-gray-900 mb-2">Voulez-vous un ticket ?</p>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Le ticket sera envoyé directement à l'imprimante ({defaultInvoiceFormat === 'a4' ? 'A4' : 'thermique'}) si QZ Tray est connecté.
+                  </p>
+                  <div className="grid gap-2">
+                    <button
+                      onClick={async () => {
+                        if (!lastSaleId) return;
+                        setIsPrintingTicket(true);
+                        const result = await printLastSaleInvoice(lastSaleId, defaultInvoiceFormat);
+                        setIsPrintingTicket(false);
+                        if (result.success) {
+                          toast.success('Ticket envoyé à l\'imprimante.');
+                        } else {
+                          toast.error('Impossible d\'imprimer le ticket. Vérifiez QZ Tray ou imprimez manuellement.');
+                        }
+                        setShowSuccessModal(false);
+                        setShowTicketPrompt(false);
+                        setLastSaleId(null);
+                        setLastSaleReference('');
+                        setLastSalePoints(0);
+                      }}
+                      disabled={isPrintingTicket}
+                      className="w-full inline-flex items-center justify-center px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 disabled:opacity-50"
+                    >
+                      {isPrintingTicket ? 'Impression en cours…' : 'Oui, imprimer le ticket'}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowSuccessModal(false);
+                        setShowTicketPrompt(false);
+                        setLastSaleId(null);
+                        setLastSaleReference('');
+                        setLastSalePoints(0);
+                      }}
+                      className="w-full py-2.5 border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      Non, terminer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <InvoiceButton
+                  venteId={lastSaleId}
+                  venteReference={lastSaleReference}
+                  variant="primary"
+                  defaultFormat={defaultInvoiceFormat}
+                />
+                <button
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    setLastSaleId(null);
+                    setLastSaleReference('');
+                    setLastSalePoints(0);
+                  }}
+                  className="w-full py-2.5 border border-gray-200 rounded-lg text-sm
+                             text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Fermer
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

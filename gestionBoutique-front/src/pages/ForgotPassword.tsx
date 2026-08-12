@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Link, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../lib/apiError';
 import { Mail, ArrowLeft } from 'lucide-react';
 
 const forgotPasswordSchema = z.object({
@@ -48,10 +49,10 @@ function ForgotPassword() {
         setEmailSent(true);
         toast.success(result.message);
       } else {
-        toast.error(result.message);
+        toast.error(getApiErrorMessage(result, 'Impossible d\'envoyer le lien de réinitialisation.'));
       }
     } catch (error) {
-      toast.error('Erreur lors de l\'envoi de l\'email');
+      toast.error('Impossible de contacter le serveur pour envoyer l\'email.');
     } finally {
       setLoading(false);
     }

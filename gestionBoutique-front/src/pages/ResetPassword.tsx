@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { Lock } from 'lucide-react';
+import { getApiErrorMessage } from '../lib/apiError';
 
 const resetPasswordSchema = z.object({
   mot_de_passe: z.string()
@@ -62,10 +63,10 @@ function ResetPassword() {
           navigate('/login');
         }, 2000);
       } else {
-        toast.error(result.message);
+        toast.error(getApiErrorMessage(result, 'Impossible de réinitialiser le mot de passe.'));
       }
     } catch (error) {
-      toast.error('Erreur lors de la réinitialisation');
+      toast.error('Impossible de contacter le serveur pour réinitialiser le mot de passe.');
     } finally {
       setLoading(false);
     }

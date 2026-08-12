@@ -39,7 +39,7 @@ export default function PriceOverrides() {
         setLastPage(data.price_overrides.last_page);
       }
     } catch {
-      toast.error('Erreur lors du chargement des ajustements de prix');
+      toast.error('Impossible de charger les ajustements de prix. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }

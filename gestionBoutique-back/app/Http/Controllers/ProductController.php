@@ -60,7 +60,7 @@ class ProductController extends Controller
         }
 
         $validated = $request->validate([
-            'reference' => 'required|string',
+            'reference' => 'nullable|string',
             'name' => 'required|string',
             'price' => 'required|numeric|min:0',
             'prix_achat' => 'nullable|numeric|min:0',
@@ -77,10 +77,13 @@ class ProductController extends Controller
 
         $ownerId = $this->getOwnerId();
 
-        $existingProduct = Product::withTrashed()
-            ->where('reference', $validated['reference'])
-            ->where('utilisateur_id', $ownerId)
-            ->first();
+        $existingProduct = null;
+        if (!empty($validated['reference'])) {
+            $existingProduct = Product::withTrashed()
+                ->where('reference', $validated['reference'])
+                ->where('utilisateur_id', $ownerId)
+                ->first();
+        }
 
         if ($existingProduct && !$existingProduct->trashed()) {
             return response()->json([
@@ -100,10 +103,14 @@ class ProductController extends Controller
                 'min_stock' => $validated['min_stock'],
                 'unit_type' => $validated['unit_type'],
                 'unit_reference' => $validated['unit_reference'],
+                'reference' => $validated['reference'] ?? Product::generateReference($validated['name'], $existingProduct->id),
             ]);
             $product = $existingProduct->fresh();
         } else {
             $validated['utilisateur_id'] = $ownerId;
+            if (empty($validated['reference'])) {
+                $validated['reference'] = Product::generateReference($validated['name']);
+            }
             $product = Product::create($validated);
         }
         $this->dashboardCache->invalidate($ownerId);

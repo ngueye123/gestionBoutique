@@ -69,7 +69,7 @@ export function HistoriqueBilans({
         setPage(p);
       }
     } catch {
-      toast.error('Erreur chargement historique');
+      toast.error('Impossible de charger l\'historique des bilans. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }
@@ -105,7 +105,7 @@ export function HistoriqueBilans({
       await telechargerTicketBilan(bilanId, bilan.ticket_reference);
       toast.success('Ticket téléchargé');
     } catch {
-      toast.error('Erreur téléchargement');
+      toast.error('Impossible de télécharger le ticket. Vérifiez votre connexion.');
     } finally {
       setLoadingTicket(null);
     }

@@ -28,7 +28,10 @@ class Utilisateur extends Authenticatable implements JWTSubject, MustVerifyEmail
         'nom_boutique',         
         'adresse_boutique',     
         'telephone_boutique',
-        'logo_boutique'
+        'logo_boutique',
+        'default_invoice_format',
+        'thermal_printer_name',
+        'a4_printer_name'
     ];
 
     protected $hidden = [

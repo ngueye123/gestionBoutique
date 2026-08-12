@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useNavigate, Link } from 'react-router-dom';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../lib/apiError';
 import { PasswordInput } from '../components/PasswordInput';
 import { CheckCircle, Mail, Store } from 'lucide-react';
 
@@ -60,10 +61,10 @@ function Register() {
         setRegistered(true);
         toast.success('Inscription réussie !');
       } else {
-        toast.error(result.message);
+        toast.error(getApiErrorMessage(result, 'Impossible de créer votre compte. Vérifiez les informations saisies.'));
       }
     } catch (error) {
-      toast.error('Une erreur est survenue lors de l\'inscription');
+      toast.error('Impossible de contacter le serveur. Vérifiez votre connexion et réessayez.');
     } finally {
       setLoading(false);
     }

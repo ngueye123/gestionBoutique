@@ -216,7 +216,7 @@ class DepenseController extends Controller
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Données invalides.',
+                'message' => 'Données invalides. Vérifiez le montant, la date et la description de la dépense.',
                 'errors'  => $e->errors(),
             ], 422);
         }
@@ -263,7 +263,7 @@ class DepenseController extends Controller
             Log::error('Erreur enregistrement dépense: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => "Erreur lors de l'enregistrement de la dépense.",
+                'message' => "Impossible d'enregistrer la dépense. Vérifiez le montant, la date et la description.",
             ], 500);
         }
 
@@ -298,7 +298,7 @@ class DepenseController extends Controller
         } catch (ValidationException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Données invalides.',
+                'message' => 'Données invalides. Vérifiez le montant, la date et la description de la dépense.',
                 'errors'  => $e->errors(),
             ], 422);
         }
@@ -346,7 +346,7 @@ class DepenseController extends Controller
             Log::error('Erreur mise à jour dépense: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la mise à jour de la dépense.',
+                'message' => 'Impossible de mettre à jour la dépense. Vérifiez le montant, la date et la description.',
             ], 500);
         }
 
@@ -393,7 +393,7 @@ class DepenseController extends Controller
             Log::error('Erreur suppression dépense: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de la suppression de la dépense.',
+                'message' => 'Impossible de supprimer la dépense. Veuillez réessayer plus tard.',
             ], 500);
         }
 

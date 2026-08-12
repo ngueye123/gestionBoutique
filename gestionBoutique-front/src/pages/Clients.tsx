@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { User, Phone, Plus, Eye, Edit2, Trash2, Search } from 'lucide-react';
 import { toast } from 'sonner';
+import { getApiErrorMessage } from '../lib/apiError';
 import { useAuthStore } from '../store/authStore';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { Client } from '../types';
@@ -35,7 +36,7 @@ export default function Clients() {
         setClients(data.clients);
       }
     } catch (error) {
-      toast.error('Erreur lors du chargement des clients');
+      toast.error('Impossible de charger les clients. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }
@@ -69,10 +70,10 @@ export default function Clients() {
         setFormData({ nom: '', telephone: '' });
         setEditingClient(null);
       } else {
-        toast.error(result.message);
+        toast.error(getApiErrorMessage(result, editingClient ? 'Impossible de mettre à jour le client.' : 'Impossible de créer le client.'));
       }
     } catch (error) {
-      toast.error('Erreur lors de la sauvegarde');
+      toast.error('Impossible d\'enregistrer le client. Vérifiez votre connexion.');
     }
   };
 
@@ -98,7 +99,7 @@ export default function Clients() {
         toast.error(result.message);
       }
     } catch (error) {
-      toast.error('Erreur lors de la suppression');
+      toast.error('Impossible de supprimer le client. Vérifiez votre connexion.');
     }
   };
 

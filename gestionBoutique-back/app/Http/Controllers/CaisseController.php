@@ -152,6 +152,38 @@ class CaisseController extends Controller
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // GET /caisse/ticket/{mouvementId}/print-base64
+    // Retourne le PDF en base64 pour impression silencieuse via QZ Tray
+    // ─────────────────────────────────────────────────────────────────────────
+    public function ticketBase64(Request $request, int $mouvementId)
+    {
+        $actor  = $this->actorResolver->resolve();
+        $caisse = Caisse::pour($actor);
+
+        $mouvement = MouvementCaisse::where('id', $mouvementId)
+            ->where('caisse_id', $caisse->id)
+            ->where('type', 'prelevement')
+            ->firstOrFail();
+
+        $boutique   = $this->getBoutique($actor);
+        $nom_acteur = $this->getNomActeur($actor);
+
+        $pdf = Pdf::loadView('caisse.ticket_prelevement', [
+            'mouvement'  => $mouvement,
+            'caisse'     => $caisse,
+            'acteur'     => $actor,
+            'boutique'   => $boutique,
+            'nom_acteur' => $nom_acteur,
+        ])->setPaper([0, 0, 226.77, 500], 'portrait');
+
+        return response()->json([
+            'success' => true,
+            'pdfBase64' => base64_encode($pdf->output()),
+            'reference' => $mouvement->ticket_reference,
+        ]);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // POST /caisse/bilan
     // Chaque acteur fait le bilan de SA PROPRE caisse uniquement
     // ─────────────────────────────────────────────────────────────────────────

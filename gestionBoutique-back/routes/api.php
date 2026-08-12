@@ -19,6 +19,10 @@ use App\Http\Controllers\SecurityPinController;
 use App\Http\Controllers\PriceOverrideController;
 use App\Http\Controllers\FideliteSettingController;
 use App\Http\Controllers\FideliteHistoriqueController;   
+use App\Http\Controllers\InvoiceSettingController;
+use App\Http\Controllers\QzTrayController;
+use App\Http\Controllers\PrinterSettingController;
+use App\Http\Controllers\ProfileBoutiqueController;
 
 // ============================================================
 // Routes publiques
@@ -70,8 +74,10 @@ Route::middleware(['jwt.custom'])->group(function () {
 
         Route::get('/', [VenteController::class, 'index']);
         Route::get('/{id}', [VenteController::class, 'show']);
-        Route::get('/{id}/facture', [FactureController::class, 'generateFacture']);
+         Route::get('/{id}/facture', [FactureController::class, 'generateFacture']);
         Route::get('/{id}/facture/preview', [FactureController::class, 'previewFacture']);
+        Route::get('/{id}/facture/print-base64', [FactureController::class, 'printBase64']);
+    
     });
 
     // ── Dashboard ─────────────────────────────────────────────────────────
@@ -116,6 +122,8 @@ Route::middleware(['jwt.custom'])->group(function () {
         Route::post('/mouvement', [CaisseController::class, 'mouvement']);
         // Ticket PDF d'un prélèvement
         Route::get('/ticket/{mouvementId}', [CaisseController::class, 'ticket']);
+        // Ticket PDF (base64) d'un prélèvement, pour impression silencieuse QZ Tray
+        Route::get('/ticket/{mouvementId}/print-base64', [CaisseController::class, 'ticketBase64']);
         //  Bilan (POST — solde_reel obligatoire, sauvegarde + génère référence)
         Route::post('/bilan', [CaisseController::class, 'bilan']);
         //  Ticket PDF d'un bilan
@@ -149,7 +157,30 @@ Route::middleware(['jwt.custom'])->group(function () {
         Route::put('/config', [FideliteSettingController::class, 'update']);
     });
 
+    // ── Paramètres de facturation (format par défaut au POS) ───────────────
+    Route::prefix('invoice-settings')->group(function () {
+        Route::get('/', [InvoiceSettingController::class, 'show']);
+        Route::put('/', [InvoiceSettingController::class, 'update']);
+    });
+
+    // ── Profil boutique (informations du patron/table utilisateurs) ────────
+    Route::prefix('profile-boutique')->group(function () {
+        Route::get('/', [ProfileBoutiqueController::class, 'show']);
+        Route::put('/', [ProfileBoutiqueController::class, 'update']);
+    });
+
 
     Route::get('/clients/{client}/fidelite-historique', [FideliteHistoriqueController::class, 'index']);
     Route::patch('/fidelite/historique/{id}', [FideliteHistoriqueController::class, 'toggleConsomme']);
+
+    // ── QZ Tray (impression silencieuse) ────────────────────────────────────
+    Route::prefix('qz')->group(function () {
+        Route::get('/certificate', [QzTrayController::class, 'certificate']);
+        Route::post('/sign', [QzTrayController::class, 'sign']);
+    });
+
+    Route::prefix('settings')->group(function () {
+        Route::get('/printers', [PrinterSettingController::class, 'show']);
+        Route::put('/printers', [PrinterSettingController::class, 'update']);
+    });
 });

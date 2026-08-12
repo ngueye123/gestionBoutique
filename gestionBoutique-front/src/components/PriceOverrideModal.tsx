@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
+import { getApiErrorMessage } from '../lib/apiError';
 import { useAuthStore } from '../store/authStore';
 import Employes from '../pages/Employes';
 
@@ -57,12 +58,12 @@ export function PriceOverrideModal({ productName, currentPrice, onConfirm, onClo
       const data = await res.json();
 
       if (!data.success) {   // ← corrigé : on lit "success", pas "valid"
-        setError(data.message || 'Code PIN incorrect');
+        setError(getApiErrorMessage(data, 'Code PIN incorrect'));
         return;
       }
       onConfirm(newPrice, justification, pin);
     } catch {
-      toast.error('Erreur lors de la vérification du PIN');
+      toast.error('Impossible de vérifier le PIN. Vérifiez votre connexion.');
     } finally {
       setVerifying(false);
     }

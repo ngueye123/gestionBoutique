@@ -80,7 +80,7 @@ export default function VentesHistorique() {
         setLastPage(data.ventes.last_page);
       }
     } catch {
-      toast.error("Erreur lors du chargement de l'historique des ventes");
+      toast.error("Impossible de charger l'historique des ventes. Vérifiez votre connexion.");
     } finally {
       setLoading(false);
     }

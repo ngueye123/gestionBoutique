@@ -34,7 +34,7 @@ class JWTMiddleware
             return response()->json(['success' => false, 'code' => 'TOKEN_INVALID', 'message' => 'Token invalide.'], 401);
         } catch (Exception $e) {
             Log::error('JWT: ' . $e->getMessage());
-            return response()->json(['success' => false, 'code' => 'TOKEN_ERROR', 'message' => 'Erreur authentification.'], 401);
+            return response()->json(['success' => false, 'code' => 'TOKEN_ERROR', 'message' => 'Impossible de vérifier le token d\'authentification. Veuillez vous reconnecter.'], 401);
         }
 
         return $next($request);

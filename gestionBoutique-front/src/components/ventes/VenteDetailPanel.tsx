@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { X, Receipt } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '../../lib/fetchWithAuth';
+import { getApiErrorMessage } from '../../lib/apiError';
 import { VenteHistorique, VenteDetailResponse } from '../../types';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
@@ -50,12 +51,12 @@ export default function VenteDetailPanel({ reference, onClose }: VenteDetailPane
         if (data.success) {
           setVente(data.vente);
         } else {
-          toast.error('Impossible de charger le détail de la vente');
+          toast.error(getApiErrorMessage(data, 'Impossible de charger le détail de la vente.'));
           onClose();
         }
       } catch {
         if (!cancelled) {
-          toast.error('Erreur lors du chargement du détail de la vente');
+          toast.error('Impossible de charger le détail de la vente. Vérifiez votre connexion.');
           onClose();
         }
       } finally {

@@ -5,6 +5,7 @@ import { ArrowLeft, DollarSign, Calendar, User, Phone, Plus, Receipt, Gift, Chec
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/authStore';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
+import { getApiErrorMessage } from '../lib/apiError';
 import { Client, Remboursement, VenteCredit, FideliteHistorique } from '../types';
 import { useParams } from 'react-router-dom';
 import VenteDetailPanel from '../components/ventes/VenteDetailPanel';
@@ -66,7 +67,7 @@ export default function ClientDetails() {
         toast.error('Client non trouvé');
       }
     } catch (error) {
-      toast.error('Erreur lors du chargement');
+      toast.error('Impossible de charger ce client. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }
@@ -97,9 +98,9 @@ export default function ClientDetails() {
           ? 'Récompense marquée comme utilisée'
           : 'Récompense remise à disposition');
       } else {
-        toast.error(result.message || 'Erreur lors de la mise à jour');
+        toast.error(getApiErrorMessage(result, 'Impossible de mettre à jour le statut de fidélité.'));
       }
-    } catch { toast.error('Erreur lors de la mise à jour du statut'); }
+    } catch { toast.error('Impossible de mettre à jour le statut de fidélité. Vérifiez votre connexion.'); }
     finally { setTogglingId(null); }
   };
 
@@ -148,10 +149,10 @@ export default function ClientDetails() {
         setShowRemboursementModal(false);
         setRemboursementData({ montant: '', moyen_paiement: 'especes', note: '' });
       } else {
-        toast.error(result.message);
+        toast.error(getApiErrorMessage(result, 'Impossible d\'enregistrer le remboursement.'));
       }
     } catch (error) {
-      toast.error('Erreur lors de l\'enregistrement');
+      toast.error('Impossible d\'enregistrer le remboursement. Vérifiez votre connexion.');
     } finally {
       setSubmitting(false);
     }

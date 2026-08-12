@@ -66,6 +66,34 @@ class FactureController extends Controller
     }
 
     /**
+     * Retourne le PDF en base64 pour impression silencieuse via QZ Tray
+     * GET /api/ventes/{id}/facture/print-base64?format=a4|thermal
+     */
+    public function printBase64(int $id, Request $request)
+    {
+        $ownerId = $this->getOwnerId();
+        $format = $request->input('format', 'thermal');
+
+        $vente = Vente::with(['details', 'client', 'utilisateur', 'employe'])
+            ->where('id', $id)
+            ->where('utilisateur_id', $ownerId)
+            ->firstOrFail();
+
+        $data = $this->buildFactureData($vente, $format);
+
+        $view = $format === 'thermal' ? 'factures.invoice_thermal' : 'factures.invoice';
+
+        $pdf = $format === 'thermal'
+            ? $this->buildThermalPdf($view, $data)
+            : Pdf::loadView($view, $data)->setPaper('a4', 'portrait');
+
+        return response()->json([
+            'success' => true,
+            'pdfBase64' => base64_encode($pdf->output()),
+            'reference' => $vente->reference,
+        ]);
+    }
+    /**
      * Prépare toutes les données pour la vue, y compris les lignes
      * pré-formatées en monospace pour le ticket thermique (voir
      * buildThermalTextLines()).

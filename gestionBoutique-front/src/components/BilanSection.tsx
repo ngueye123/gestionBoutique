@@ -72,10 +72,10 @@ export function BilanSection({
         setResultats(data.bilans);
         toast.success(`Bilan calculé — ${data.bilans.length} caisse(s)`);
       } else {
-        toast.error(data.message || 'Erreur lors du calcul du bilan');
+        toast.error(data.message || 'Impossible de calculer le bilan. Vérifiez les informations saisies.');
       }
     } catch {
-      toast.error('Erreur réseau');
+      toast.error('Impossible de calculer le bilan. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }
@@ -94,7 +94,7 @@ export function BilanSection({
       await telechargerTicketBilan(bilanId, bilan.ticket_reference);
       toast.success('Ticket téléchargé');
     } catch {
-      toast.error('Erreur téléchargement ticket');
+      toast.error('Impossible de télécharger le ticket de bilan. Vérifiez votre connexion.');
     } finally {
       setLoadingTicket(null);
     }

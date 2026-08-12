@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
+import { connectQzTray, printFacturePdf } from '../lib/qzTray';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
@@ -147,6 +148,33 @@ export function useCaisse() {
     URL.revokeObjectURL(url);
   }, []);
 
+  // ── Imprimer ticket prélèvement (QZ Tray) ─────────────────────────────────
+
+  const imprimerTicket = useCallback(async (mouvementId: number): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const connected = await connectQzTray();
+      if (!connected) return { success: false, error: 'QZ Tray non connecté' };
+
+      const response = await fetchWithAuth(`${API_URL}/caisse/ticket/${mouvementId}/print-base64`);
+      if (!response.ok) throw new Error('Erreur lors de la génération');
+      const { pdfBase64 } = await response.json();
+
+      const settingsRes = await fetchWithAuth(`${API_URL}/settings/printers`);
+      const settings = await settingsRes.json();
+      const printerName = settings.thermal_printer_name;
+
+      if (!printerName) {
+        return { success: false, error: 'Aucune imprimante configurée. Rendez-vous dans Paramètres > Imprimantes.' };
+      }
+
+      await printFacturePdf(pdfBase64, 'thermal', printerName);
+      return { success: true };
+    } catch (error) {
+      console.error('Erreur impression ticket:', error);
+      return { success: false, error: 'Impossible d\'imprimer le ticket' };
+    }
+  }, []);
+
   // ── Calculer bilan ────────────────────────────────────────────────────────
 
   const calculerBilan = useCallback(async (
@@ -199,6 +227,7 @@ export function useCaisse() {
     chargerMaCaisse,
     effectuerMouvement,
     telechargerTicket,
+    imprimerTicket,
     calculerBilan,
     telechargerTicketBilan,
     chargerHistoriqueBilans,

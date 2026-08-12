@@ -18,9 +18,9 @@ import ClientDetails from './pages/ClientDetails'
 import Caisse from './pages/Caisse'
 import Depenses from './pages/Depenses'
 import VerifyEmployeEmail from './pages/VerifyEmployeEmail';
-import SecuritySettings from './pages/SecuritySettings';
 import PriceOverrides from './pages/PriceOverrides';
-import FideliteSettings from './pages/FideliteSettings';
+import Parametres from './pages/Parametres';
+import ProfilBoutique from './pages/ProfilBoutique';
 import VentesHistorique from './pages/VentesHistorique';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -169,12 +169,22 @@ export default function App() {
             }
           />
 
-          {/* Paramètres fidélité — Patrons et admin*/}
+          {/* Paramètres — Patrons et admin (sécurité, fidélité, facturation) */}
           <Route
-            path="parametres-fidelite"
+            path="parametres"
             element={
               <RoleGuard requireEmployeeAdmin>
-                <FideliteSettings />
+                <Parametres />
+              </RoleGuard>
+            }
+          />
+
+          {/* Profil Boutique — Patrons et admin (lecture), édition patron uniquement */}
+          <Route
+            path="profil-boutique"
+            element={
+              <RoleGuard requireEmployeeAdmin>
+                <ProfilBoutique />
               </RoleGuard>
             }
           />
@@ -194,15 +204,6 @@ export default function App() {
             element={
               <RoleGuard requireEmployeeAdmin>
                 <PriceOverrides />
-              </RoleGuard>
-            }
-          />
-
-          <Route
-            path="securite"
-            element={
-              <RoleGuard requirePatron>
-                <SecuritySettings />
               </RoleGuard>
             }
           />

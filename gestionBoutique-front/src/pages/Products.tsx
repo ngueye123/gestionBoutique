@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { Product } from '../types';
 import { useAuthStore } from '../store/authStore';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
+import { getApiErrorMessage } from '../lib/apiError';
 import {
   UNIT_CONFIG, UNIT_TYPE_LABELS, compatibleUnits, toBase, fromBase, type UnitType,
 } from '../lib/unitConverter';
@@ -19,7 +20,7 @@ import {
 // ─── Validation Zod ─────────────────────────────────────────────────────────
 
 const productSchema = z.object({
-  reference: z.string().min(1, 'La référence est obligatoire'),
+  reference: z.string().optional(),
   name:      z.string().min(1, 'Le nom est obligatoire'),
   price:     z.number().min(0, 'Le prix doit être positif'),
   prix_achat: z.number().min(0, "Le prix d'achat doit être positif").optional().nullable(),
@@ -53,6 +54,18 @@ const fmt = (n: number | null | undefined) => {
 const formatQty = (n: number) => Number(n.toFixed(3)).toString();
 
 const unitLabel = (type: UnitType, unit: string) => UNIT_CONFIG[type].labels[unit] ?? unit;
+
+const generateProductReference = (name: string): string => {
+  const cleaned = name
+    .trim()
+    .toUpperCase()
+    .normalize('NFD')
+    .replace(/\p{Diacritic}+/gu, '')
+    .replace(/[^A-Z0-9]+/gu, '-')
+    .replace(/^-+|-+$/gu, '') || 'PRODUIT';
+
+  return `${cleaned}-${Math.floor(1000 + Math.random() * 9000)}`;
+};
 
 // Quantité affichable dans l'unité de référence du produit (le stock est stocké en unité de base)
 const displayQty = (product: Product, baseQty: number) =>
@@ -138,6 +151,8 @@ function Products() {
     resolver: zodResolver(productSchema),
   });
 
+  const referenceValue = watch('reference');
+  const productNameValue = watch('name');
   const selectedUnitType = (watch('unit_type') || 'piece') as UnitType;
   const selectedUnitReference = watch('unit_reference') || compatibleUnits(selectedUnitType)[0];
 
@@ -167,10 +182,10 @@ function Products() {
       if (res.ok && data?.success) {
         setProducts(data.products as Product[]);
       } else {
-        toast.error(data?.message || 'Erreur de chargement des produits');
+        toast.error(getApiErrorMessage(data, 'Impossible de charger les produits.'));
       }
     } catch {
-      toast.error('Erreur de chargement des produits');
+      toast.error('Impossible de charger les produits. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }
@@ -210,10 +225,10 @@ function Products() {
         await fetchProducts();
         closeModal();
       } else {
-        toast.error(result?.message || 'Erreur lors de la sauvegarde');
+        toast.error(getApiErrorMessage(result, editingProduct ? 'Impossible de mettre à jour le produit.' : 'Impossible d\'ajouter le produit.'));
       }
     } catch {
-      toast.error('Erreur lors de la sauvegarde');
+      toast.error(editingProduct ? 'Impossible de mettre à jour le produit. Vérifiez votre connexion.' : 'Impossible d\'ajouter le produit. Vérifiez votre connexion.');
     } finally {
       setSubmitting(false);
     }
@@ -234,10 +249,10 @@ function Products() {
         toast.success('Produit supprimé');
         await fetchProducts();
       } else {
-        toast.error(result?.message || 'Erreur lors de la suppression');
+        toast.error(getApiErrorMessage(result, 'Impossible de supprimer le produit.'));
       }
     } catch {
-      toast.error('Erreur lors de la suppression');
+      toast.error('Impossible de supprimer le produit. Vérifiez votre connexion.');
     }
   };
 
@@ -265,6 +280,12 @@ function Products() {
     setEditingProduct(null);
     reset();
   };
+
+  React.useEffect(() => {
+    if (productNameValue && !referenceValue) {
+      setValue('reference', generateProductReference(productNameValue));
+    }
+  }, [productNameValue, referenceValue, setValue]);
 
   // ── Données dérivées ──────────────────────────────────────────────────────
 
@@ -835,18 +856,24 @@ function Products() {
                 /* Mode édition : formulaire complet */
                 <>
                   <div className="grid grid-cols-2 gap-3">
-                    <Field label="Référence" error={errors.reference?.message}>
-                      <input
-                        type="text"
-                        {...register('reference')}
-                        placeholder="REF-001"
-                        className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
-                                   focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-                                   placeholder-gray-300 font-mono transition"
-                      />
-                    </Field>
+                    {editingProduct ? (
+                      <Field label="Référence" error={errors.reference?.message}>
+                        <input
+                          type="text"
+                          {...register('reference')}
+                          placeholder="REF-001"
+                          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
+                                     focus:ring-2 focus:ring-blue-500 focus:border-blue-500
+                                     placeholder-gray-300 font-mono transition"
+                        />
+                      </Field>
+                    ) : (
+                      <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 p-4 text-sm text-gray-600">
+                        Référence générée automatiquement après enregistrement.
+                      </div>
+                    )}
 
-                    <Field label="Catégorie" error={errors.category?.message}>
+                    <Field label="Categorie" error={errors.category?.message}>
                       <input
                         type="text"
                         {...register('category')}

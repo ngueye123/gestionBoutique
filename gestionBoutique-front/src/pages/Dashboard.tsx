@@ -107,10 +107,10 @@ function Dashboard() {
       if (res.ok && data) {
         setStats(data);
       } else {
-        toast.error(data?.message || 'Erreur lors du chargement des statistiques');
+        toast.error(data?.message || 'Impossible de charger les statistiques. Vérifiez votre connexion.');
       }
     } catch {
-      toast.error('Erreur de connexion au serveur');
+      toast.error('Impossible de se connecter au serveur. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }
@@ -136,10 +136,10 @@ function Dashboard() {
         toast.success(data.message || 'Statistiques réinitialisées.');
         fetchStats();
       } else {
-        toast.error(data?.message || 'Impossible de réinitialiser les statistiques');
+        toast.error(data?.message || 'Impossible de réinitialiser les statistiques.');
       }
     } catch {
-      toast.error('Erreur de communication avec le serveur');
+      toast.error('Impossible de communiquer avec le serveur. Vérifiez votre connexion.');
     } finally {
       setResetting(false);
     }

@@ -1,6 +1,6 @@
 // src/components/CaisseBloqueeModal.tsx
 import React, { useState } from 'react';
-import { AlertTriangle, TrendingDown, Loader2, Download, X } from 'lucide-react';
+import { AlertTriangle, TrendingDown, Loader2, Printer, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { BloquageInfo } from '../hooks/useCaisse';
 import { useCaisse } from '../hooks/useCaisse';
@@ -26,8 +26,9 @@ export function CaisseBloqueeModal({ bloquage, onPrelevementFait, onAnnuler }: C
   const [note, setNote]        = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [dernierMouvement, setDernierMouvement] = useState<any>(null);
+  const [impression, setImpression] = useState(false);
 
-  const { effectuerMouvement, telechargerTicket } = useCaisse();
+  const { effectuerMouvement, imprimerTicket } = useCaisse();
 
   const soldeCourant = bloquage.caisse.solde_actuel;
   const plafond      = bloquage.caisse.plafond;
@@ -58,6 +59,21 @@ export function CaisseBloqueeModal({ bloquage, onPrelevementFait, onAnnuler }: C
 
   const handleContinuer = () => {
     onPrelevementFait();
+  };
+
+  const handleImprimerTicket = async () => {
+    if (!dernierMouvement) return;
+    setImpression(true);
+    try {
+      const result = await imprimerTicket(dernierMouvement.id);
+      if (result.success) {
+        toast.success('Ticket envoyé à l\'imprimante');
+      } else {
+        toast.error(result.error || 'Impossible d\'imprimer le ticket');
+      }
+    } finally {
+      setImpression(false);
+    }
   };
 
   const couleurBandeauRaison = COULEURS_RAISON[bloquage.raison] || COULEURS_RAISON.plafond_atteint;
@@ -211,10 +227,15 @@ export function CaisseBloqueeModal({ bloquage, onPrelevementFait, onAnnuler }: C
               </div>
 
               <button
-                onClick={() => telechargerTicket(dernierMouvement.id, dernierMouvement.ticket_reference)}
-                className="w-full flex items-center justify-center px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
+                onClick={handleImprimerTicket}
+                disabled={impression}
+                className="w-full flex items-center justify-center px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
               >
-                <Download className="w-4 h-4 mr-2" />
+                {impression ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Printer className="w-4 h-4 mr-2" />
+                )}
                 Imprimer le ticket de prélèvement
               </button>
 

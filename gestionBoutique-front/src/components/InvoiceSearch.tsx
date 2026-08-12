@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Search, Download, Eye, FileText, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
+import { getApiErrorMessage } from '../lib/apiError';
 
 interface Vente {
   id: number;
@@ -68,10 +69,11 @@ export function InvoiceSearch({ onClose }: InvoiceSearchProps) {
         setSelectedVente(data.vente);
         setSuggestions([]);
       } else {
-        toast.error('Vente introuvable');
+        toast.error(getApiErrorMessage(data, 'Vente introuvable'));
       }
     } catch (error) {
-      toast.error('Erreur lors de la recherche');
+      console.error('Erreur recherche facture:', error);
+      toast.error('Impossible de rechercher la facture. Vérifiez votre connexion.');
     } finally {
       setLoading(false);
     }
@@ -85,7 +87,8 @@ export function InvoiceSearch({ onClose }: InvoiceSearchProps) {
       );
 
       if (!response.ok) {
-        toast.error('Erreur lors de la génération');
+        const errorData = await response.json();
+        toast.error(getApiErrorMessage(errorData, 'Impossible de générer la facture.'));
         return;
       }
 
@@ -101,7 +104,8 @@ export function InvoiceSearch({ onClose }: InvoiceSearchProps) {
       
       toast.success('Facture téléchargée !');
     } catch (error) {
-      toast.error('Erreur lors du téléchargement');
+      console.error('Erreur téléchargement facture de recherche:', error);
+      toast.error('Impossible de télécharger la facture. Vérifiez votre connexion.');
     }
   };
 
@@ -113,7 +117,8 @@ export function InvoiceSearch({ onClose }: InvoiceSearchProps) {
       );
 
       if (!response.ok) {
-        toast.error('Erreur lors de la prévisualisation');
+        const errorData = await response.json();
+        toast.error(getApiErrorMessage(errorData, 'Impossible de prévisualiser la facture.'));
         return;
       }
 
@@ -122,7 +127,8 @@ export function InvoiceSearch({ onClose }: InvoiceSearchProps) {
       window.open(url, '_blank');
       setTimeout(() => window.URL.revokeObjectURL(url), 100);
     } catch (error) {
-      toast.error('Erreur lors de la prévisualisation');
+      console.error('Erreur prévisualisation facture de recherche:', error);
+      toast.error('Impossible de prévisualiser la facture. Vérifiez votre connexion.');
     }
   };
 

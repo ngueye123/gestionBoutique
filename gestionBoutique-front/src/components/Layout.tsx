@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Package, ShoppingCart, Users, LogOut, User, UserCircle, TrendingDown, Menu, X, Star } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, Users, LogOut, User, UserCircle, TrendingDown, Menu, X, Settings, Store } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { EmployeUser } from '../types';
 import { Wallet } from 'lucide-react';
-import { ShieldCheck } from 'lucide-react';
 import { History } from 'lucide-react';
 
 //import { TrendingDown } from 'lucide-react';
@@ -126,11 +125,19 @@ function Layout() {
           </Link>
         )}
 
-        {/* Paramètres fidélité — Patrons et admin*/}
+        {/* Profil Boutique — Patrons et admin */}
         {canViewDashboard() && (
-          <Link to="/parametres-fidelite" className={linkClass('/parametres-fidelite')}>
-            <Star className="w-5 h-5 mr-2" />
-            Paramètres fidélité
+          <Link to="/profil-boutique" className={linkClass('/profil-boutique')}>
+            <Store className="w-5 h-5 mr-2" />
+            Profil Boutique
+          </Link>
+        )}
+
+        {/* Paramètres — Patrons et admin (sécurité, fidélité, facturation) */}
+        {canViewDashboard() && (
+          <Link to="/parametres" className={linkClass('/parametres')}>
+            <Settings className="w-5 h-5 mr-2" />
+            Paramètres
           </Link>
         )}
 
@@ -157,13 +164,6 @@ function Layout() {
           </Link>
         )}
       </nav>
-
-      {canManageEmployees() && (
-        <Link to="/securite" className={linkClass('/securite')}>
-          <ShieldCheck className="w-5 h-5 mr-2" />
-          Sécurité
-        </Link>
-      )}
 
       {/* Bouton de déconnexion */}
       <div className="bottom-4 left-4">

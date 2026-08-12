@@ -188,6 +188,8 @@ export interface FideliteConfig {
   points_accordes: number
 }
 
+export type InvoiceFormat = 'a4' | 'thermal'
+
 export interface FideliteInfo {
   points: number
   solde_avant: number

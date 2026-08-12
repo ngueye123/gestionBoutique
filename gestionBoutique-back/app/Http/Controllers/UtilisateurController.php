@@ -26,7 +26,7 @@ class UtilisateurController extends Controller
             'mot_de_passe' => 'required|string|min:6',
             'nom_boutique' => 'required|string|max:50',
             'adresse_boutique' => 'required|string|max:255',
-            'telephone_boutique' => 'string|max:20',
+            'telephone_boutique' => 'string|max:50',
             'logo_boutique' => 'string|max:500'
         ]);
 
@@ -128,7 +128,7 @@ class UtilisateurController extends Controller
             Log::error('Erreur envoi email: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de l\'envoi de l\'email.'
+                'message' => 'Impossible d\'envoyer l\'email de vérification. Veuillez réessayer plus tard.'
             ], 500);
         }
 
@@ -223,7 +223,7 @@ class UtilisateurController extends Controller
             Log::error('Erreur envoi email reset: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Erreur lors de l\'envoi de l\'email.'
+                'message' => 'Impossible d\'envoyer l\'email de réinitialisation. Veuillez réessayer plus tard.'
             ], 500);
         }
 

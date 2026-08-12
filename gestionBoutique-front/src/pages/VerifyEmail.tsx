@@ -50,8 +50,8 @@ function VerifyEmail() {
       }
     } catch (error) {
       setStatus('error');
-      setMessage('Erreur lors de la vérification de l\'email.');
-      toast.error('Erreur de connexion au serveur');
+      setMessage('Impossible de vérifier l\'email. Vérifiez votre connexion.');
+      toast.error('Impossible de vérifier l\'email. Vérifiez votre connexion.');
     }
   };
 

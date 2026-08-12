@@ -244,7 +244,7 @@ class EmployeController extends Controller
             Log::error('Erreur renvoi email vérification employé: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => "Erreur lors de l'envoi de l'email.",
+                'message' => 'Impossible d\'envoyer l\'email de réinitialisation. Veuillez réessayer plus tard.'
             ], 500);
         }
 

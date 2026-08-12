@@ -64,7 +64,7 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($request->is('api/*')) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Données invalides.',
+                    'message' => 'Données invalides. Vérifiez les champs indiqués.',
                     'errors'  => $e->errors(),
                 ], 422);
             }
@@ -96,9 +96,20 @@ return Application::configure(basePath: dirname(__DIR__))
                 // On ne remonte JAMAIS le message SQL brut au client (sécurité)
                 report($e); // log complet côté serveur pour debug
 
+                $sqlErrorCode = $e->errorInfo[1] ?? null;
+                $message = 'Erreur lors de l\'accès aux données.';
+
+                if ($sqlErrorCode === 1062) {
+                    $message = 'Doublon détecté : une donnée identique existe déjà.';
+                } elseif ($sqlErrorCode === 1451) {
+                    $message = 'Impossible de supprimer cet élément car il est utilisé par d\'autres données.';
+                } elseif ($sqlErrorCode === 1452) {
+                    $message = 'Référence invalide : un enregistrement lié est introuvable.';
+                }
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'Erreur lors de l\'accès aux données.',
+                    'message' => $message,
                 ], 500);
             }
         });
@@ -111,7 +122,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Une erreur inattendue est survenue.',
+                    'message' => 'Une erreur inattendue est survenue. Veuillez réessayer plus tard.',
                     // 'debug' n'apparaît JAMAIS en production — uniquement en local
                     'debug' => config('app.debug') ? $e->getMessage() : null,
                 ], 500);
