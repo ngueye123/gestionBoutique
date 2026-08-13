@@ -8,7 +8,6 @@ use App\Models\Product;
 use App\Models\Client;
 use App\Models\Employe;
 use App\Models\Utilisateur;
-use APP\Models\SecuritySetting;
 use App\Models\PriceOverride;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -60,8 +59,6 @@ class VenteController extends Controller
             'items.*.unite'                       => 'nullable|string|max:10',
             'items.*.prix_override'               => 'nullable|numeric|min:0',
             'items.*.justification'                => 'nullable|string|max:255',
-            'items.*.pin'                           => 'nullable|string|max:10',
-
             'paiements'                              => 'required|array|min:1',
             'paiements.*.mode'                        => 'required|in:especes,wave,orange_money,dette',
             'paiements.*.montant'                      => 'required_unless:paiements.*.mode,especes|nullable|numeric|min:0.01',

@@ -421,7 +421,20 @@ export default function ClientDetails() {
                       </div>
                     </div>
                     <div onClick={(e) => e.stopPropagation()}>
-                      <InvoiceButton venteId={vente.id} venteReference={vente.reference} variant="icon" />
+                      <div className="inline-flex items-center gap-1">
+                        <InvoiceButton
+                          venteId={vente.id}
+                          venteReference={vente.reference}
+                          variant="icon"
+                          iconAction="preview"
+                        />
+                        <InvoiceButton
+                          venteId={vente.id}
+                          venteReference={vente.reference}
+                          variant="icon"
+                          iconAction="print"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>

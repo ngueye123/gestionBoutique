@@ -1,29 +1,19 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
-import { fetchWithAuth } from '../lib/fetchWithAuth';
-import { getApiErrorMessage } from '../lib/apiError';
-import { useAuthStore } from '../store/authStore';
-import Employes from '../pages/Employes';
 
 interface Props {
   productName: string;
   currentPrice: number;
-  onConfirm: (newPrice: number, justification: string, pin?: string) => void;
+  onConfirm: (newPrice: number, justification: string) => void;
   onClose: () => void;
 }
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-
 export function PriceOverrideModal({ productName, currentPrice, onConfirm, onClose }: Props) {
-  const { user } = useAuthStore();
-  const isExempte = user?.user_type === 'patron' || user?.role === 'admin';
-
-  const [newPrice, setNewPrice]           = useState(currentPrice);
+  const [newPrice, setNewPrice] = useState(currentPrice);
   const [justification, setJustification] = useState('');
-  const [pin, setPin]                     = useState('');
-  const [error, setError]                 = useState('');
-  const [verifying, setVerifying]         = useState(false);
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
     setError('');
@@ -32,40 +22,19 @@ export function PriceOverrideModal({ productName, currentPrice, onConfirm, onClo
       setError('Le prix doit être positif');
       return;
     }
- 
+
     if (newPrice === currentPrice) {
-      onConfirm(newPrice, '', undefined);
+      onConfirm(newPrice, '');
       return;
     }
 
-    if (isExempte) {
-      onConfirm(newPrice, justification, undefined);
-      return;
-    }
-
-    if (pin.length !== 4) {
-      setError('Code PIN à 4 chiffres requis');
-      return;
-    }
-
-    setVerifying(true);
+    setSubmitting(true);
     try {
-      const res  = await fetchWithAuth(`${API_URL}/pos/verify-pin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin }),
-      });
-      const data = await res.json();
-
-      if (!data.success) {   // ← corrigé : on lit "success", pas "valid"
-        setError(getApiErrorMessage(data, 'Code PIN incorrect'));
-        return;
-      }
-      onConfirm(newPrice, justification, pin);
+      onConfirm(newPrice, justification);
     } catch {
-      toast.error('Impossible de vérifier le PIN. Vérifiez votre connexion.');
+      toast.error('Impossible d\'appliquer la modification. Vérifiez votre connexion.');
     } finally {
-      setVerifying(false);
+      setSubmitting(false);
     }
   };
 
@@ -89,8 +58,7 @@ export function PriceOverrideModal({ productName, currentPrice, onConfirm, onClo
               step="1"
               value={newPrice}
               onChange={e => setNewPrice(parseFloat(e.target.value) || 0)}
-              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
-                         focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mt-1"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mt-1"
             />
             <p className="text-xs text-gray-400 mt-1">
               Prix catalogue : {currentPrice.toLocaleString('fr-FR')} F
@@ -105,24 +73,7 @@ export function PriceOverrideModal({ productName, currentPrice, onConfirm, onClo
                 onChange={e => setJustification(e.target.value)}
                 placeholder="Ex : fidélisation client, produit abîmé..."
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
-                           focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mt-1"
-              />
-            </div>
-          )}
-
-          {newPrice !== currentPrice && !isExempte && (
-            <div>
-              <label className="text-xs text-gray-500">Code PIN</label>
-              <input
-                type="password"
-                inputMode="numeric"
-                maxLength={4}
-                value={pin}
-                onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
-                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm
-                           tracking-widest text-center focus:ring-2 focus:ring-blue-500
-                           focus:border-blue-500 mt-1"
+                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 mt-1"
               />
             </div>
           )}
@@ -139,11 +90,10 @@ export function PriceOverrideModal({ productName, currentPrice, onConfirm, onClo
           </button>
           <button
             onClick={handleSubmit}
-            disabled={verifying}
-            className="flex-[2] py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium
-                       hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400"
+            disabled={submitting}
+            className="flex-[2] py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400"
           >
-            {verifying ? 'Vérification...' : 'Valider'}
+            {submitting ? 'Enregistrement...' : 'Valider'}
           </button>
         </div>
       </div>

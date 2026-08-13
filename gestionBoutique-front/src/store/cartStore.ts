@@ -8,7 +8,7 @@ interface CartState {
   removeItem: (productId: string) => void;
   updateQuantity: (productId: string, quantity: number) => void;
   changeUnite: (productId: string, newUnit: string) => void;
-  overridePrice: (productId: string, newPrice: number, justification: string, pin?: string) => void;
+  overridePrice: (productId: string, newPrice: number, justification: string) => void;
   clearCart: () => void;
   total: number;
 }
@@ -64,7 +64,7 @@ export const useCartStore = create<CartState>((set, get) => ({
     set({ items, total: calculateTotal(items) });
   },
 
-  overridePrice: (productId, newPrice, justification, pin) => {
+  overridePrice: (productId, newPrice, justification) => {
     const items = get().items.map(item => {
       if (item.id !== productId) return item;
 
@@ -75,7 +75,6 @@ export const useCartStore = create<CartState>((set, get) => ({
         price: newPrice,
         isOverridden,
         justification: isOverridden ? justification : undefined,
-        pin: isOverridden ? pin : undefined,
       };
     });
     set({ items, total: calculateTotal(items) });

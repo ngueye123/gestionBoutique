@@ -226,44 +226,52 @@ export default function POS() {
     ? Math.floor(montantComptantAffecte / fideliteConfig.montant_tranche) * fideliteConfig.points_accordes
     : 0;
 
-  const ajouterLignePaiement = (montantForce?: number) => {
+  const ajouterLignePaiement = (montantForce?: number): LignePaiement | null => {
     const montant = montantForce ?? montantEnCours;
 
     if (modeEnCours === 'dette' && !selectedClient) {
-      toast.error('Sélectionnez un client pour le paiement à crédit'); return;
+      toast.error('Sélectionnez un client pour le paiement à crédit'); return null;
     }
     if (montant <= 0) {
-      toast.error('Montant invalide'); return;
+      toast.error('Montant invalide'); return null;
     }
 
     if (modeEnCours === 'especes') {
       const montantAffecte = Math.min(montant, resteAPayer > 0 ? resteAPayer : montant);
-      setLignesPaiement(l => [...l, {
+      const ligne: LignePaiement = {
         id: crypto.randomUUID(),
         mode: 'especes',
         montant: montantAffecte,
         montant_recu: montant,
-      }]);
+      };
+      setLignesPaiement(l => [...l, ligne]);
+      setMontantEnCours(0);
+      return ligne;
     } else {
       if (montant > resteAPayer) {
-        toast.error(`Le montant dépasse le reste à payer (${fmt(resteAPayer)})`); return;
+        toast.error(`Le montant dépasse le reste à payer (${fmt(resteAPayer)})`); return null;
       }
-      setLignesPaiement(l => [...l, {
+      const ligne: LignePaiement = {
         id: crypto.randomUUID(),
         mode: modeEnCours,
         montant,
-      }]);
+      };
+      setLignesPaiement(l => [...l, ligne]);
+      setMontantEnCours(0);
+      return ligne;
     }
-
-    setMontantEnCours(0);
   };
 
   const supprimerLignePaiement = (id: string) =>
     setLignesPaiement(l => l.filter(x => x.id !== id));
 
-  const handlePayment = async () => {
-    if (resteAPayer > 0) {
-      toast.error(`Il reste ${fmt(resteAPayer)} à payer`); return;
+  const handlePayment = async (paiementsOverride?: LignePaiement[]) => {
+    const paiements = paiementsOverride ?? lignesPaiement;
+    const totalPaye = paiements.reduce((sum, line) => sum + line.montant, 0);
+    const reste = Math.max(0, round2(total - totalPaye));
+
+    if (reste > 0) {
+      toast.error(`Il reste ${fmt(reste)} à payer`); return;
     }
 
     setLoading(true);
@@ -279,9 +287,8 @@ export default function POS() {
             unite: i.unite_vente,
             prix_override: i.isOverridden ? i.price : undefined,
             justification: i.isOverridden ? i.justification : undefined,
-            pin: i.isOverridden ? i.pin : undefined,
           })),
-          paiements: lignesPaiement.map(l => ({
+          paiements: paiements.map(l => ({
             mode: l.mode,
             montant: l.mode === 'especes' ? undefined : l.montant,
             montant_recu: l.mode === 'especes' ? l.montant_recu : undefined,
@@ -302,7 +309,7 @@ export default function POS() {
         setLastSaleReference(result.vente.reference);
         setLastSalePoints(result.fidelite?.points ?? 0);
 
-        const detteLine = lignesPaiement.find(l => l.mode === 'dette');
+        const detteLine = paiements.find(l => l.mode === 'dette');
         const pts = result.fidelite?.points ?? 0;
 
         if (detteLine) {
@@ -345,6 +352,31 @@ export default function POS() {
     setSelectedClient(null);
     setClientSearch('');
     setShowClientForm(false);
+  };
+
+  const handleConfirmPayment = async () => {
+    if (items.length === 0) return;
+
+    let paiements = lignesPaiement;
+
+    if (resteAPayer > 0) {
+      const ligne = ajouterLignePaiement();
+      if (!ligne) return;
+
+      paiements = [...lignesPaiement, ligne];
+      const totalPaye = paiements.reduce((sum, line) => sum + line.montant, 0);
+      const nouveauReste = Math.max(0, round2(total - totalPaye));
+
+      if (nouveauReste > 0) {
+        toast.message(`Reste à payer: ${fmt(nouveauReste)}`);
+        if (modeEnCours !== 'especes') {
+          setMontantEnCours(nouveauReste);
+        }
+        return;
+      }
+    }
+
+    await handlePayment(paiements);
   };
 
   // ── Données dérivées ──────────────────────────────────────────────────────
@@ -953,15 +985,6 @@ export default function POS() {
                         </div>
                       )}
 
-                      <button
-                        onClick={() => ajouterLignePaiement()}
-                        disabled={montantEnCours <= 0 || (modeEnCours === 'dette' && !selectedClient)}
-                        className="w-full py-2.5 mt-3 bg-blue-600 text-white rounded-lg text-sm font-medium
-                                  hover:bg-blue-700 transition-colors
-                                  disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed"
-                      >
-                        Ajouter ce paiement
-                      </button>
                     </div>
                   </>
                 ) : (
@@ -985,8 +1008,8 @@ export default function POS() {
                 Annuler
               </button>
               <button
-                onClick={handlePayment}
-                disabled={loading || resteAPayer > 0 || lignesPaiement.length === 0 || items.length === 0}
+                onClick={handleConfirmPayment}
+                disabled={loading || items.length === 0 || (resteAPayer > 0 && montantEnCours <= 0 && lignesPaiement.length === 0)}
                 className="flex-[2] py-2.5 bg-green-600 text-white rounded-lg text-sm
                            font-medium flex items-center justify-center gap-2
                            hover:bg-green-700 transition-colors
@@ -1112,10 +1135,10 @@ export default function POS() {
           productName={overrideProduct.name}
           currentPrice={overrideProduct.price}
           onClose={() => setOverrideProduct(null)}
-          onConfirm={(newPrice, justification, pin) => {
+          onConfirm={(newPrice, justification) => {
             const alreadyInCart = items.find(i => i.id === overrideProduct.id);
             if (!alreadyInCart) addItem(overrideProduct);
-            overridePrice(overrideProduct.id, newPrice, justification, pin);
+            overridePrice(overrideProduct.id, newPrice, justification);
             setOverrideProduct(null);
           }}
         />

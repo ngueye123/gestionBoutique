@@ -14,8 +14,6 @@ use App\Http\Controllers\FactureController;
 use App\Http\Controllers\CaisseController;
 use App\Http\Middleware\CheckCaissePlafond;
 use App\Http\Controllers\DepenseController;
-use App\Http\Controllers\PinVerificationController;
-use App\Http\Controllers\SecurityPinController;
 use App\Http\Controllers\PriceOverrideController;
 use App\Http\Controllers\FideliteSettingController;
 use App\Http\Controllers\FideliteHistoriqueController;   
@@ -148,8 +146,6 @@ Route::middleware(['jwt.custom'])->group(function () {
     });
 
     Route::get('/price-overrides', [PriceOverrideController::class, 'index']);
-    Route::post('/pos/verify-pin', [PinVerificationController::class, 'verify'])-> middleware('throttle:5,1');
-    Route::post('/security-pin', [SecurityPinController::class, 'create_pin'])-> middleware('throttle:5,1');
 
     // ── Fidélité ──────────────────────────────────────────────────────────
     Route::prefix('fidelite')->group(function () {

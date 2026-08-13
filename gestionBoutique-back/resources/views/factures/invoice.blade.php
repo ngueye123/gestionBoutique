@@ -85,6 +85,68 @@
             margin-bottom: 5px;
         }
 
+        .payment-section {
+            margin-bottom: 0;
+            background-color: #eff6ff;
+            padding: 12px;
+            border-radius: 5px;
+        }
+
+        .info-columns {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+            margin-bottom: 25px;
+        }
+
+        .info-column {
+            display: table-cell;
+            width: 50%;
+            vertical-align: top;
+        }
+
+        .info-column.left {
+            padding-right: 8px;
+        }
+
+        .info-column.right {
+            padding-left: 8px;
+        }
+
+        .payment-list {
+            margin-top: 8px;
+        }
+
+        .payment-row {
+            display: table;
+            width: 100%;
+            margin-bottom: 5px;
+        }
+
+        .payment-label {
+            display: table-cell;
+            width: 70%;
+            font-weight: bold;
+        }
+
+        .payment-value {
+            display: table-cell;
+            width: 30%;
+            text-align: right;
+            font-weight: bold;
+        }
+
+        .fidelite-badge {
+            display: inline-block;
+            margin-top: 8px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            background: #ecfdf5;
+            color: #047857;
+            font-weight: bold;
+            font-size: 10px;
+        }
+
         .label {
             font-weight: bold;
             color: #555;
@@ -93,9 +155,9 @@
 
         /* Informations client */
         .client-section {
-            margin-bottom: 25px;
+            margin-bottom: 0;
             background-color: #f3f4f6;
-            padding: 15px;
+            padding: 12px;
             border-radius: 5px;
         }
 
@@ -363,37 +425,71 @@
             </div>
         </div>
 
-        <!-- Informations client -->
-        @if($vente->client)
-            <div class="client-section">
-                <div class="section-title">Informations Client</div>
-                <div class="client-info">
-                    <div class="client-info-left">
-                        <div class="info-item">
-                            <span class="label">Nom:</span> {{ $vente->client->nom }}
-                        </div>
-                        <div class="info-item">
-                            <span class="label">Téléphone:</span> {{ $vente->client->telephone }}
+        @if((!empty($paymentDetails) || $pointsFidelite > 0) || $vente->client)
+            <div class="info-columns">
+                @if(!empty($paymentDetails) || $pointsFidelite > 0)
+                    <div class="info-column left">
+                        <div class="payment-section">
+                            <div class="section-title">Détails du paiement</div>
+
+                            @if(!empty($paymentDetails))
+                                <div class="payment-list">
+                                    @foreach($paymentDetails as $payment)
+                                        <div class="payment-row">
+                                            <span class="payment-label">{{ $payment['label'] }}@if($payment['reference_transaction']) - {{ $payment['reference_transaction'] }}@endif:</span>
+                                            <span class="payment-value">{{ number_format($payment['amount'], 0, ',', ' ') }} F</span>
+                                        </div>
+                                        @if($payment['mode'] === 'especes' && !empty($payment['monnaie_rendue']))
+                                            <div class="payment-row">
+                                                <span class="payment-label">Monnaie rendue:</span>
+                                                <span class="payment-value">{{ number_format($payment['monnaie_rendue'], 0, ',', ' ') }} F</span>
+                                            </div>
+                                        @endif
+                                    @endforeach
+                                </div>
+                            @endif
+
+                            @if($vente->client)
+                                <div class="fidelite-badge">Points fidélité gagnés: {{ $pointsFidelite }}</div>
+                            @endif
                         </div>
                     </div>
-                </div>
+                @endif
 
-                @if($vente->moyen_paiement === 'dette' && $ancienSolde !== null && $nouveauSolde !== null)
-                    <div class="debt-alert">
-                        <strong>⚠️ Vente à crédit</strong>
-                        <div class="debt-amounts">
-                            <div class="debt-amount-row">
-                                <span class="debt-label">Dette précédente:</span>
-                                <span class="debt-value old-debt">{{ number_format($ancienSolde, 0, ',', ' ') }} F</span>
+                @if($vente->client)
+                    <div class="info-column {{ (!empty($paymentDetails) || $pointsFidelite > 0) ? 'right' : 'left' }}">
+                        <div class="client-section">
+                            <div class="section-title">Informations Client</div>
+                            <div class="client-info">
+                                <div class="client-info-left">
+                                    <div class="info-item">
+                                        <span class="label">Nom:</span> {{ $vente->client->nom }}
+                                    </div>
+                                    <div class="info-item">
+                                        <span class="label">Téléphone:</span> {{ $vente->client->telephone }}
+                                    </div>
+                                </div>
                             </div>
-                            <div class="debt-amount-row">
-                                <span class="debt-label">Montant de cette facture:</span>
-                                <span class="debt-value current-amount">+ {{ number_format($vente->total, 0, ',', ' ') }} F</span>
-                            </div>
-                            <div class="debt-amount-row">
-                                <span class="debt-label">Nouvelle dette totale:</span>
-                                <span class="debt-value new-debt">{{ number_format($nouveauSolde, 0, ',', ' ') }} F</span>
-                            </div>
+
+                            @if($debtAmount > 0 && $ancienSolde !== null && $nouveauSolde !== null)
+                                <div class="debt-alert">
+                                    <strong>⚠️ Dette client</strong>
+                                    <div class="debt-amounts">
+                                        <div class="debt-amount-row">
+                                            <span class="debt-label">Dette précédente:</span>
+                                            <span class="debt-value old-debt">{{ number_format($ancienSolde, 0, ',', ' ') }} F</span>
+                                        </div>
+                                        <div class="debt-amount-row">
+                                            <span class="debt-label">Montant de cette facture:</span>
+                                            <span class="debt-value current-amount">+ {{ number_format($debtAmount, 0, ',', ' ') }} F</span>
+                                        </div>
+                                        <div class="debt-amount-row">
+                                            <span class="debt-label">Nouvelle dette totale:</span>
+                                            <span class="debt-value new-debt">{{ number_format($nouveauSolde, 0, ',', ' ') }} F</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            @endif
                         </div>
                     </div>
                 @endif

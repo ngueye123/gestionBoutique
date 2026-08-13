@@ -13,6 +13,7 @@ interface InvoiceButtonProps {
   venteReference?: string;
   variant?: 'primary' | 'secondary' | 'icon';
   defaultFormat?: 'a4' | 'thermal';
+  iconAction?: 'print' | 'preview';
 }
 
 export function InvoiceButton({
@@ -22,6 +23,7 @@ export function InvoiceButton({
   venteReference,
   variant = 'primary',
   defaultFormat = 'a4',
+  iconAction = 'print',
 }: InvoiceButtonProps) {
   const [isPrinting, setIsPrinting] = useState(false);
   const [showFormatMenu, setShowFormatMenu] = useState(false);
@@ -179,18 +181,20 @@ export function InvoiceButton({
     return (
       <div ref={triggerRef} className="relative inline-block">
         <button
-          onClick={toggleMenu}
+          onClick={iconAction === 'preview' ? () => previewInvoice(defaultFormat) : toggleMenu}
           disabled={isPrinting}
-          className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg disabled:opacity-50"
-          title="Imprimer la facture"
+          className={`p-2 rounded-lg disabled:opacity-50 ${iconAction === 'preview' ? 'text-emerald-600 hover:bg-emerald-50' : 'text-blue-600 hover:bg-blue-50'}`}
+          title={iconAction === 'preview' ? 'Prévisualiser la facture' : 'Imprimer la facture'}
         >
-          {isPrinting ? (
+          {isPrinting && iconAction === 'print' ? (
             <Loader2 className="w-5 h-5 animate-spin" />
+          ) : iconAction === 'preview' ? (
+            <Eye className="w-5 h-5" />
           ) : (
             <Printer className="w-5 h-5" />
           )}
         </button>
-        {showFormatMenu && <FormatMenu action="print" />}
+        {iconAction === 'print' && showFormatMenu && <FormatMenu action={iconAction} />}
       </div>
     );
   }

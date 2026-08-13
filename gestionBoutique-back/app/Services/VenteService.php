@@ -8,7 +8,6 @@ use App\Models\Product;
 use App\Models\Client;
 use App\Models\Caisse;
 use App\Models\Employe;
-use App\Models\SecuritySetting;
 use App\Models\PriceOverride;
 use App\Models\VentePaiement;
 use App\Models\Utilisateur;
@@ -107,10 +106,6 @@ class VenteService
                 $prixNormal = $product->price;
                 $prixFinal  = $item['prix_override'] ?? $prixNormal;
                 $isOverride = bccomp((string) $prixFinal, (string) $prixNormal, 2) !== 0;
-
-                if ($isOverride) {
-                    $this->autoriserOverride($actor, $item['pin'] ?? null);
-                }
 
                 $pricePerBase = UnitConverter::pricePerBase($product->unit_type, $product->unit_reference, $prixFinal);
                 $sousTotal    = round($pricePerBase * $qtyBase, 2);
@@ -214,7 +209,6 @@ class VenteService
                         'prix_normal'     => $venteItem['prix_normal'],
                         'prix_applique'   => $venteItem['prix_final'],
                         'justification'   => $venteItem['justification'],
-                        'pin_utilise'     => $actor instanceof Employe,
                         'ip_address'      => request()->ip(),
                     ]);
 
@@ -309,20 +303,4 @@ class VenteService
         }
     }
 
-    /**
-     * Vérifie que l'acteur est autorisé à appliquer une surcharge de prix.
-     * Le patron (acteur non-Employe) est exempté de PIN.
-     *
-     * @throws \RuntimeException  Si le PIN est manquant ou invalide
-     */
-    private function autoriserOverride(mixed $actor, ?string $pin): void
-    {
-        if (!$actor instanceof Employe) {
-            return; // patron / propriétaire du compte : bypass
-        }
-
-        if (!$pin || !SecuritySetting::current()->verifyPin($pin)) {
-            throw new \RuntimeException('Code PIN invalide ou manquant pour la surcharge de prix', 403);
-        }
-    }
 }

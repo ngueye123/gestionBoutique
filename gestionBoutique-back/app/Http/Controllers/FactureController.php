@@ -3,10 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Vente;
-use App\Models\Client;
+use App\Models\FideliteSetting;
 use Illuminate\Http\Request;
-use Illuminate\Http\Response;
-use Illuminate\Support\Facades\Log;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class FactureController extends Controller
@@ -22,7 +20,7 @@ class FactureController extends Controller
         $ownerId = $this->getOwnerId();
         $format = $request->input('format', 'a4');
 
-        $vente = Vente::with(['details', 'client', 'utilisateur', 'employe'])
+        $vente = Vente::with(['details', 'client', 'utilisateur', 'employe', 'paiements'])
             ->where('id', $id)
             ->where('utilisateur_id', $ownerId)
             ->firstOrFail();
@@ -49,7 +47,7 @@ class FactureController extends Controller
         $ownerId = $this->getOwnerId();
         $format = $request->input('format', 'a4');
 
-        $vente = Vente::with(['details', 'client', 'utilisateur', 'employe'])
+        $vente = Vente::with(['details', 'client', 'utilisateur', 'employe', 'paiements'])
             ->where('id', $id)
             ->where('utilisateur_id', $ownerId)
             ->firstOrFail();
@@ -74,7 +72,7 @@ class FactureController extends Controller
         $ownerId = $this->getOwnerId();
         $format = $request->input('format', 'thermal');
 
-        $vente = Vente::with(['details', 'client', 'utilisateur', 'employe'])
+        $vente = Vente::with(['details', 'client', 'utilisateur', 'employe', 'paiements'])
             ->where('id', $id)
             ->where('utilisateur_id', $ownerId)
             ->firstOrFail();
@@ -102,12 +100,16 @@ class FactureController extends Controller
     {
         $boutique = $vente->utilisateur;
 
+        $paymentDetails = $this->buildPaymentDetails($vente);
+        $debtAmount = $this->debtAmount($vente);
+        $pointsFidelite = $this->calculateFidelitePoints($vente, $debtAmount);
+
         $ancienSolde = null;
         $nouveauSolde = null;
 
-        if ($vente->client_id && $vente->moyen_paiement === 'dette') {
+        if ($vente->client_id && $debtAmount > 0 && $vente->client) {
             $client = $vente->client;
-            $ancienSolde = $client->solde_dette - $vente->total;
+            $ancienSolde = $client->solde_dette - $debtAmount;
             $nouveauSolde = $client->solde_dette;
         }
 
@@ -116,14 +118,63 @@ class FactureController extends Controller
             'boutique' => $boutique,
             'ancienSolde' => $ancienSolde,
             'nouveauSolde' => $nouveauSolde,
+            'debtAmount' => $debtAmount,
+            'paymentDetails' => $paymentDetails,
+            'pointsFidelite' => $pointsFidelite,
             'format' => $format,
         ];
 
         if ($format === 'thermal') {
-            $data = array_merge($data, $this->buildThermalTextLines($vente, $ancienSolde, $nouveauSolde));
+            $data = array_merge($data, $this->buildThermalTextLines($vente, $paymentDetails, $pointsFidelite, $ancienSolde, $nouveauSolde));
         }
 
         return $data;
+    }
+
+    private function buildPaymentDetails(Vente $vente): array
+    {
+        return $vente->paiements->map(function ($paiement) {
+            $label = match ($paiement->mode) {
+                'especes' => 'Espèces',
+                'wave' => 'Wave',
+                'orange_money' => 'Orange Money',
+                'dette' => 'Dette',
+                default => ucfirst(str_replace('_', ' ', $paiement->mode)),
+            };
+
+            $amount = $paiement->mode === 'especes'
+                ? (float) ($paiement->montant_recu ?? $paiement->montant)
+                : (float) $paiement->montant;
+
+            return [
+                'mode' => $paiement->mode,
+                'label' => $label,
+                'amount' => $amount,
+                'reference_transaction' => $paiement->reference_transaction,
+                'monnaie_rendue' => (float) ($paiement->monnaie_rendue ?? 0),
+            ];
+        })->values()->all();
+    }
+
+    private function debtAmount(Vente $vente): float
+    {
+        return (float) $vente->paiements->where('mode', 'dette')->sum('montant');
+    }
+
+    private function calculateFidelitePoints(Vente $vente, float $debtAmount): int
+    {
+        if (!$vente->client_id) {
+            return 0;
+        }
+
+        $config = FideliteSetting::forOwner($vente->utilisateur_id);
+        if ($config->montant_tranche <= 0 || $config->points_accordes <= 0) {
+            return 0;
+        }
+
+        $montantComptant = max(0, (int) round((float) $vente->total) - (int) round($debtAmount));
+
+        return intdiv($montantComptant, $config->montant_tranche) * $config->points_accordes;
     }
 
     /**
@@ -135,7 +186,7 @@ class FactureController extends Controller
      * En pré-formatant le texte nous-mêmes avec des espaces, l'alignement
      * ne dépend plus du moteur de layout de dompdf.
      */
-    private function buildThermalTextLines(Vente $vente, ?float $ancienSolde, ?float $nouveauSolde): array
+    private function buildThermalTextLines(Vente $vente, array $paymentDetails, int $pointsFidelite, ?float $ancienSolde, ?float $nouveauSolde): array
     {
         // Largeurs en caractères, calibrées pour chaque taille de police
         // utilisée (58mm ≈ 54mm de zone imprimable après padding).
@@ -143,6 +194,7 @@ class FactureController extends Controller
         $TOTALS_WIDTH = 42;    // police 7px
         $TOTAL_FINAL_WIDTH = 34; // police 9px (ligne TOTAL, plus grosse)
         $DEBT_WIDTH = 48;      // police 6px
+        $PAYMENT_WIDTH = 48;   // police 6px
 
         $productLines = [];
         foreach ($vente->details as $detail) {
@@ -160,7 +212,7 @@ class FactureController extends Controller
         $totalsLines = [];
         $totalsLines[] = $this->padLine('Sous-total:', number_format($vente->total, 0, ',', ' ') . ' F', $TOTALS_WIDTH);
 
-        if ($vente->moyen_paiement === 'especes') {
+        if ($vente->moyen_paiement === 'especes' && $vente->paiements->count() === 1) {
             $totalsLines[] = $this->padLine('Reçu:', number_format($vente->montant_recu, 0, ',', ' ') . ' F', $TOTALS_WIDTH);
             if ($vente->monnaie > 0) {
                 $totalsLines[] = $this->padLine('Monnaie:', number_format($vente->monnaie, 0, ',', ' ') . ' F', $TOTALS_WIDTH);
@@ -169,17 +221,38 @@ class FactureController extends Controller
 
         $totalFinalLine = $this->padLine('TOTAL:', number_format($vente->total, 0, ',', ' ') . ' F', $TOTAL_FINAL_WIDTH);
 
+        $paymentLines = [];
+        if (count($paymentDetails) > 1 || $vente->moyen_paiement === 'mixte') {
+            $paymentLines[] = 'DETAILS PAIEMENT';
+            foreach ($paymentDetails as $detail) {
+                $paymentLines[] = $this->padLine($detail['label'] . ':', number_format($detail['amount'], 0, ',', ' ') . ' F', $PAYMENT_WIDTH);
+
+                if (!empty($detail['reference_transaction'])) {
+                    $paymentLines[] = 'Ref: ' . $detail['reference_transaction'];
+                }
+
+                if ($detail['mode'] === 'especes' && $detail['monnaie_rendue'] > 0) {
+                    $paymentLines[] = $this->padLine('Monnaie rendue:', number_format($detail['monnaie_rendue'], 0, ',', ' ') . ' F', $PAYMENT_WIDTH);
+                }
+            }
+        }
+
+        if ($vente->client_id) {
+            $paymentLines[] = $this->padLine('Points fidélité:', number_format($pointsFidelite, 0, ',', ' ') . ' pt(s)', $PAYMENT_WIDTH);
+        }
+
         $debtLines = [];
         $debtFinalLine = null;
 
-        if ($vente->moyen_paiement === 'dette' && $ancienSolde !== null && $nouveauSolde !== null) {
+        if ($vente->client_id && $ancienSolde !== null && $nouveauSolde !== null) {
             $debtLines[] = $this->padLine('Dette avant:', number_format($ancienSolde, 0, ',', ' ') . ' F', $DEBT_WIDTH);
-            $debtLines[] = $this->padLine('Cette facture:', number_format($vente->total, 0, ',', ' ') . ' F', $DEBT_WIDTH);
+            $debtLines[] = $this->padLine('Cette facture:', number_format($debtAmount, 0, ',', ' ') . ' F', $DEBT_WIDTH);
             $debtFinalLine = $this->padLine('NOUVELLE DETTE:', number_format($nouveauSolde, 0, ',', ' ') . ' F', $DEBT_WIDTH);
         }
 
         return [
             'productLines' => $productLines,
+            'paymentLines' => $paymentLines,
             'totalsLines' => $totalsLines,
             'totalFinalLine' => $totalFinalLine,
             'debtLines' => $debtLines,
@@ -277,6 +350,13 @@ class FactureController extends Controller
         if ($vente->client) {
             $mm += 3;
             $mm += 2 * 2.3; // nom + téléphone
+
+            $mm += 2.3; // points fidélité
+
+            if (!empty($data['paymentLines'])) {
+                $mm += 3;
+                $mm += count($data['paymentLines']) * 2;
+            }
 
             if (!empty($data['debtLines'])) {
                 $mm += 3; // titre CREDIT

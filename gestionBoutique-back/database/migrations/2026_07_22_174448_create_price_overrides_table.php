@@ -20,7 +20,6 @@ return new class extends Migration
             $table->decimal('prix_normal', 10, 2);
             $table->decimal('prix_applique', 10, 2);
             $table->string('justification')->nullable();
-            $table->boolean('pin_utilise')->default(false);
             $table->string('ip_address', 45)->nullable();
             $table->timestamps();
         });

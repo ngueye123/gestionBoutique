@@ -147,7 +147,20 @@ export default function VentesHistorique() {
                 <td className="px-4 py-3">{MOYEN_LABELS[v.moyen_paiement] ?? v.moyen_paiement}</td>
                 <td className="px-4 py-3 text-right font-medium">{fmt(v.total)}</td>
                 <td className="px-4 py-3 text-center" onClick={(e) => e.stopPropagation()}>
-                <InvoiceButton venteId={v.id} venteReference={v.reference} variant="icon" />
+                  <div className="inline-flex items-center gap-1">
+                    <InvoiceButton
+                      venteId={v.id}
+                      venteReference={v.reference}
+                      variant="icon"
+                      iconAction="preview"
+                    />
+                    <InvoiceButton
+                      venteId={v.id}
+                      venteReference={v.reference}
+                      variant="icon"
+                      iconAction="print"
+                    />
+                  </div>
                 </td>
               </tr>
             ))}

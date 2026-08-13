@@ -17,14 +17,12 @@ class PriceOverride extends Model
         'prix_normal',
         'prix_applique',
         'justification',
-        'pin_utilise',
         'ip_address',
     ];
 
     protected $casts = [
         'prix_normal'   => 'decimal:2',
         'prix_applique' => 'decimal:2',
-        'pin_utilise'   => 'boolean',
     ];
 
     public function vente(): BelongsTo

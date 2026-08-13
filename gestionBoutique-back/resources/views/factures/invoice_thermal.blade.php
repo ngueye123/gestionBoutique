@@ -160,6 +160,16 @@
             margin-top: 0.5mm;
             line-height: 1.1;
         }
+
+        .payment-title {
+            text-align: center;
+            font-size: 7px;
+            font-weight: bold;
+            border-top: 1px dashed #000;
+            border-bottom: 1px dashed #000;
+            padding: 1mm 0;
+            margin: 1.5mm 0 1mm 0;
+        }
     </style>
 </head>
 <body>
@@ -180,6 +190,13 @@
         <div class="info-line">Mode: {{ strtoupper(str_replace('_', ' ', $vente->moyen_paiement)) }}</div>
         @if($vente->employe)<div class="info-line">Vendeur: {{ $vente->employe->nom }}</div>@endif
     </div>
+
+    @if(!empty($paymentLines))
+        <div class="payment-title">DETAILS PAIEMENT</div>
+        @foreach($paymentLines as $line)
+            <div class="info-line">{{ $line }}</div>
+        @endforeach
+    @endif
 
     @if($vente->client)
         <table class="client-table">

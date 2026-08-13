@@ -138,7 +138,6 @@ export interface CartItem extends Product {
   originalPrice: number;   
   isOverridden: boolean;
   justification?: string;
-  pin?: string;             
 }
 
 // Type pour le formulaire de création de client

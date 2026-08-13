@@ -1,80 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ShieldCheck, Star, Printer, RefreshCw, Loader2, Save, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Star, Printer, RefreshCw, Loader2, Save, CheckCircle2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
-import { useAuthStore } from '../store/authStore';
 import type { FideliteConfig, InvoiceFormat } from '../types';
 import { connectQzTray, listPrinters } from '../lib/qzTray';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
-
-function SecuriteTab() {
-  const [pin, setPin] = useState('');
-  const [confirmPin, setConfirmPin] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  const handleSave = async () => {
-    if (pin.length !== 4) { toast.error('Le PIN doit contenir 4 chiffres'); return; }
-    if (pin !== confirmPin) { toast.error('Les deux codes ne correspondent pas'); return; }
-
-    setLoading(true);
-    try {
-      const res = await fetchWithAuth(`${API_URL}/security-pin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success('Code PIN mis à jour avec succès');
-        setPin(''); setConfirmPin('');
-      } else {
-        toast.error(data.message || 'Impossible de mettre à jour le code PIN.');
-      }
-    } catch {
-      toast.error('Impossible de mettre à jour le code PIN. Vérifiez votre connexion.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="max-w-md">
-      <p className="text-sm text-gray-500 mb-6">
-        Ce code est demandé aux vendeurs lorsqu'ils ajustent le prix d'un produit au comptoir.
-      </p>
-
-      <div className="bg-white rounded-xl border border-gray-200 p-5 space-y-4">
-        <div>
-          <label className="text-xs text-gray-500">Nouveau code PIN (4 chiffres)</label>
-          <input
-            type="password" inputMode="numeric" maxLength={4}
-            value={pin} onChange={e => setPin(e.target.value.replace(/\D/g, ''))}
-            className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm
-                       tracking-widest text-center focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <div>
-          <label className="text-xs text-gray-500">Confirmer le code</label>
-          <input
-            type="password" inputMode="numeric" maxLength={4}
-            value={confirmPin} onChange={e => setConfirmPin(e.target.value.replace(/\D/g, ''))}
-            className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm
-                       tracking-widest text-center focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={loading}
-          className="w-full py-2.5 bg-blue-600 text-white rounded-lg text-sm font-medium
-                     hover:bg-blue-700 disabled:bg-gray-200 disabled:text-gray-400"
-        >
-          {loading ? 'Enregistrement...' : 'Enregistrer le code PIN'}
-        </button>
-      </div>
-    </div>
-  );
-}
 
 function FideliteTab() {
   const [config, setConfig] = useState<Partial<FideliteConfig>>({});
@@ -446,11 +377,7 @@ function ImprimantesTab() {
 type TabKey = 'securite' | 'fidelite' | 'facturation' | 'imprimantes';
 
 export default function Parametres() {
-  const { user } = useAuthStore();
-  const isPatron = user?.user_type === 'patron';
-
-  const tabs: { key: TabKey; label: string; icon: typeof ShieldCheck }[] = [
-    ...(isPatron ? [{ key: 'securite' as TabKey, label: 'Sécurité', icon: ShieldCheck }] : []),
+  const tabs: { key: TabKey; label: string; icon: typeof Star }[] = [
     { key: 'fidelite', label: 'Fidélité', icon: Star },
     { key: 'facturation', label: 'Facturation', icon: Printer },
     { key: 'imprimantes', label: 'Imprimantes', icon: Printer },
@@ -462,7 +389,7 @@ export default function Parametres() {
     <div>
       <h1 className="text-xl font-semibold text-gray-900 mb-1">Paramètres</h1>
       <p className="text-sm text-gray-500 mb-6">
-        Réglages de la boutique : sécurité, fidélité et facturation.
+        Réglages de la boutique : fidélité, facturation et imprimantes.
       </p>
 
       <div className="flex gap-1 border-b border-gray-200 mb-6">
@@ -482,7 +409,6 @@ export default function Parametres() {
         ))}
       </div>
 
-      {activeTab === 'securite' && isPatron && <SecuriteTab />}
       {activeTab === 'fidelite' && <FideliteTab />}
       {activeTab === 'facturation' && <FacturationTab />}
       {activeTab === 'imprimantes' && <ImprimantesTab />}
