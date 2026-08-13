@@ -12,10 +12,15 @@ use Tymon\JWTAuth\Exceptions\JWTException;
 use Illuminate\Support\Facades\Log;
 use App\Notifications\VerifyEmailNotification;
 use App\Notifications\ResetPasswordNotification;
+use App\Services\SubscriptionService;
 use Carbon\Carbon;
 
 class UtilisateurController extends Controller
 {
+    public function __construct(private readonly SubscriptionService $subscriptionService)
+    {
+    }
+
     // Inscription avec envoi d'email de vérification
     public function register(Request $request)
     {
@@ -47,6 +52,16 @@ class UtilisateurController extends Controller
             $user->notify(new VerifyEmailNotification($validated['verification_token']));
         } catch (\Exception $e) {
             Log::error('Erreur envoi email: ' . $e->getMessage());
+        }
+
+        // Créer l'abonnement d'essai gratuit de 14 jours (aucune donnée de paiement requise).
+        // En échec (ex: aucun plan configuré), on ne bloque pas l'inscription mais on logue l'erreur :
+        // le middleware CheckSubscriptionAccess détectera l'absence d'abonnement et bloquera l'accès
+        // jusqu'à régularisation manuelle.
+        try {
+            $this->subscriptionService->registerTrial($user);
+        } catch (\Exception $e) {
+            Log::error('Erreur création abonnement d\'essai: ' . $e->getMessage());
         }
 
         return response()->json([

@@ -14,3 +14,13 @@ Schedule::command('fidelite:reset-mensuel')
     ->monthlyOn(1, '00:05')
     ->timezone('Africa/Dakar')
     ->onOneServer();
+
+Schedule::command('subscriptions:send-trial-reminders')
+    ->dailyAt('09:00')
+    ->timezone('Africa/Dakar')
+    ->onOneServer();
+
+Schedule::command('subscriptions:process-renewals')
+    ->dailyAt('02:00')
+    ->timezone('Africa/Dakar')
+    ->onOneServer();

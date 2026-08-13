@@ -35,4 +35,17 @@ return [
         ],
     ],
 
+    // Paiement Wave (Sénégal) — abonnement SaaS.
+    // Basculement sandbox/production via WAVE_SANDBOX + les clés correspondantes.
+    'wave' => [
+        'sandbox' => env('WAVE_SANDBOX', true),
+        'api_key' => env('WAVE_SANDBOX', true)
+            ? env('WAVE_API_KEY_SANDBOX')
+            : env('WAVE_API_KEY_PRODUCTION'),
+        'webhook_secret' => env('WAVE_SANDBOX', true)
+            ? env('WAVE_WEBHOOK_SECRET_SANDBOX')
+            : env('WAVE_WEBHOOK_SECRET_PRODUCTION'),
+        'base_url' => env('WAVE_API_BASE_URL', 'https://api.wave.com'),
+    ],
+
 ];

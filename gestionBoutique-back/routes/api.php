@@ -23,6 +23,8 @@ use App\Http\Controllers\InvoiceSettingController;
 use App\Http\Controllers\QzTrayController;
 use App\Http\Controllers\PrinterSettingController;
 use App\Http\Controllers\ProfileBoutiqueController;
+use App\Http\Controllers\BillingController;
+use App\Http\Controllers\WaveWebhookController;
 
 // ============================================================
 // Routes publiques
@@ -42,9 +44,20 @@ Route::post('/employe/forgot-password', [EmployeAuthController::class, 'forgotPa
 Route::post('/employe/reset-password', [EmployeAuthController::class, 'resetPassword']);
 
 // ============================================================
-// Routes protégées avec JWT
+// Paiement abonnement + webhook Wave
 // ============================================================
-Route::middleware(['jwt.custom'])->group(function () {
+Route::middleware(['jwt.custom'])->prefix('billing')->group(function () {
+    Route::get('/subscription', [BillingController::class, 'show']);
+    Route::post('/subscription/checkout', [BillingController::class, 'initiateCheckout']);
+});
+
+Route::post('/wave/webhook', [WaveWebhookController::class, 'handle'])
+    ->middleware('throttle:60,1');
+
+// ============================================================
+// Routes protégées avec JWT + contrôle d'abonnement
+// ============================================================
+Route::middleware(['jwt.custom', 'subscription.access'])->group(function () {
 
     // ── Auth ─────────────────────────────────────────────────────────────
     Route::post('/logout', [UtilisateurController::class, 'logout']);

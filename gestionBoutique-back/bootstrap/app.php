@@ -25,6 +25,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'check.role'      => \App\Http\Middleware\CheckRole::class,
             'dashboard.access'=> \App\Http\Middleware\DashboardAccess::class,
             'check.caisse'    => \App\Http\Middleware\CheckCaissePlafond::class,
+            'subscription.access' => \App\Http\Middleware\CheckSubscriptionAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

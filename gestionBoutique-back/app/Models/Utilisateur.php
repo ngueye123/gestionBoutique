@@ -66,6 +66,11 @@ class Utilisateur extends Authenticatable implements JWTSubject, MustVerifyEmail
         return $this->hasMany(Employe::class, 'utilisateur_id');
     }
 
+    public function subscription()
+    {
+        return $this->hasOne(Subscription::class, 'boutique_id');
+    }
+
     // Pour JWT - IMPORTANT
     public function getJWTIdentifier()
     {
