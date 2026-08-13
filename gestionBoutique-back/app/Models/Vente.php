@@ -23,9 +23,9 @@ class Vente extends Model
     ];
 
     protected $casts = [
-        'total' => 'decimal:2',
-        'montant_recu' => 'decimal:2',
-        'monnaie' => 'decimal:2',
+        'total' => 'integer',
+        'montant_recu' => 'integer',
+        'monnaie' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

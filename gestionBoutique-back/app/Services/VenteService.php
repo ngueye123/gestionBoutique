@@ -29,6 +29,14 @@ class VenteService
         private readonly FideliteService $fideliteService,  
     ) {}
 
+    private function ceilAmount(float|int $amount): int
+    {
+        // Tolère les artefacts flottants (ex: 100.0000001) sans sur-arrondir inutilement.
+        $normalized = round((float) $amount, 6);
+
+        return (int) ceil($normalized - 1e-9);
+    }
+
     /**
      * Enregistre une vente complète dans une transaction atomique.
      *
@@ -108,7 +116,7 @@ class VenteService
                 $isOverride = bccomp((string) $prixFinal, (string) $prixNormal, 2) !== 0;
 
                 $pricePerBase = UnitConverter::pricePerBase($product->unit_type, $product->unit_reference, $prixFinal);
-                $sousTotal    = round($pricePerBase * $qtyBase, 2);
+                $sousTotal    = $this->ceilAmount($pricePerBase * $qtyBase);
                 $total       += $sousTotal;
                 $venteItems[] = [
                     'product'         => $product,
@@ -124,21 +132,22 @@ class VenteService
             }
 
             // --- Contrôles C1/C2/C6/C7 : ventilation des paiements sur le total ---
-            $resteAPayer     = round($total, 2);
-            $montantRecuEspeces = 0.0;
-            $monnaieTotal       = 0.0;
+            $total         = $this->ceilAmount($total);
+            $resteAPayer   = $total;
+            $montantRecuEspeces = 0;
+            $monnaieTotal       = 0;
             $lignesAPersister   = [];
 
             foreach ($paiements as $p) {
                 $mode = $p['mode'];
 
                 if ($mode === 'especes') {
-                    $montantRecu    = round((float) ($p['montant_recu'] ?? 0), 2);
+                    $montantRecu    = $this->ceilAmount((float) ($p['montant_recu'] ?? 0));
                     if ($montantRecu <= 0) {
                         throw new \RuntimeException('Montant reçu en espèces invalide', 400);
                     }
                     $montantAffecte = min($montantRecu, $resteAPayer);
-                    $monnaie        = round($montantRecu - $montantAffecte, 2);
+                    $monnaie        = $montantRecu - $montantAffecte;
 
                     $lignesAPersister[] = [
                         'mode'            => 'especes',
@@ -149,14 +158,14 @@ class VenteService
 
                     $montantRecuEspeces += $montantRecu;
                     $monnaieTotal       += $monnaie;
-                    $resteAPayer         = round($resteAPayer - $montantAffecte, 2);
+                    $resteAPayer         = $resteAPayer - $montantAffecte;
 
                 } else {
-                    $montant = round((float) ($p['montant'] ?? 0), 2);
+                    $montant = $this->ceilAmount((float) ($p['montant'] ?? 0));
                     if ($montant <= 0) {
                         throw new \RuntimeException("Montant invalide pour le mode {$mode}", 400);
                     }
-                    if ($montant - $resteAPayer > 0.01) {
+                    if ($montant > $resteAPayer) {
                         throw new \RuntimeException(
                             "Le montant en {$mode} ({$montant}) dépasse le reste à payer ({$resteAPayer})",
                             400
@@ -170,11 +179,11 @@ class VenteService
                         'client_id'               => $mode === 'dette' ? $clientId : null,
                     ];
 
-                    $resteAPayer = round($resteAPayer - $montant, 2);
+                    $resteAPayer = $resteAPayer - $montant;
                 }
             }
 
-            if ($resteAPayer > 0.01) {
+            if ($resteAPayer > 0) {
                 throw new \RuntimeException(
                     "Paiement incomplet : il reste {$resteAPayer} F à payer",
                     422
@@ -251,10 +260,8 @@ class VenteService
            //  Fidélité — points sur la part comptant, indépendamment du mode ---
             $fideliteInfo = null;
             if ($client) {
-                $montantDetteVente = (int) round(
-                    collect($lignesAPersister)->where('mode', 'dette')->sum('montant')
-                );
-                $montantComptant = max(0, (int) round($total) - $montantDetteVente);
+                $montantDetteVente = (int) collect($lignesAPersister)->where('mode', 'dette')->sum('montant');
+                $montantComptant = max(0, $total - $montantDetteVente);
 
                 $fideliteInfo = $this->fideliteService->crediterEtTracer(
                     client: $client,
@@ -271,9 +278,9 @@ class VenteService
             }
 
             $vente->update([
-                'total'        => round($total, 2),
+                'total'        => $total,
                 'montant_recu' => $montantRecuEspeces > 0 ? $montantRecuEspeces : null,
-                'monnaie'      => round($monnaieTotal, 2),
+                'monnaie'      => $monnaieTotal,
             ]);
 
             DB::commit();

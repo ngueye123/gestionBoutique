@@ -61,8 +61,8 @@ class VenteController extends Controller
             'items.*.justification'                => 'nullable|string|max:255',
             'paiements'                              => 'required|array|min:1',
             'paiements.*.mode'                        => 'required|in:especes,wave,orange_money,dette',
-            'paiements.*.montant'                      => 'required_unless:paiements.*.mode,especes|nullable|numeric|min:0.01',
-            'paiements.*.montant_recu'                  => 'required_if:paiements.*.mode,especes|nullable|numeric|min:0.01',
+            'paiements.*.montant'                      => 'required_unless:paiements.*.mode,especes|nullable|integer|min:1',
+            'paiements.*.montant_recu'                  => 'required_if:paiements.*.mode,especes|nullable|integer|min:1',
             'paiements.*.reference_transaction'          => 'nullable|string|max:50',
         ]);
 

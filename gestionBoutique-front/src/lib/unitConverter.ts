@@ -39,5 +39,5 @@ export const lineSubtotal = (item: {
 }): number => {
   const qtyBase = toBase(item.unit_type, item.unite_vente, item.quantity);
   const pricePerBase = item.price / UNIT_CONFIG[item.unit_type].factors[item.unit_reference];
-  return Math.round(pricePerBase * qtyBase * 100) / 100;
+  return Math.ceil((pricePerBase * qtyBase) - 1e-9);
 };

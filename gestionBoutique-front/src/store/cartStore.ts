@@ -84,5 +84,6 @@ export const useCartStore = create<CartState>((set, get) => ({
 }));
 
 const calculateTotal = (items: CartItem[]): number => {
-  return items.reduce((sum, item) => sum + lineSubtotal(item), 0);
+  const rawTotal = items.reduce((sum, item) => sum + lineSubtotal(item), 0);
+  return Math.ceil(rawTotal - 1e-9);
 };

@@ -30,24 +30,17 @@ interface LignePaiement {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-/** Formatte un montant sans arrondi, préservant les décimales telles qu'en base */
+const ceilAmount = (n: number): number => Math.ceil(Number.isFinite(n) ? (n - 1e-9) : 0);
+
+/** Affiche toujours un montant entier en F CFA. */
 const fmt = (n: number | null | undefined) => {
   if (n === null || n === undefined || !isFinite(n as number)) return '0 F';
-  const s = String(n);
-  if (s.toLowerCase().includes('e')) {
-    return (n as number).toLocaleString('fr-FR', { maximumFractionDigits: 6 }) + ' F';
-  }
-  const [intPart, fracPart] = s.split('.');
-  const intNumber = Number(intPart);
-  const intFormatted = intNumber.toLocaleString('fr-FR');
-  if (!fracPart || /^0+$/.test(fracPart)) return `${intFormatted} F`;
-  const fracTrimmed = fracPart.replace(/0+$/u, '');
-  return `${intFormatted},${fracTrimmed} F`;
+  return `${ceilAmount(Number(n)).toLocaleString('fr-FR')} F`;
 };
 
 const getSoldeDette = (solde: any): number => {
   const parsed = parseFloat(String(solde || 0));
-  return isNaN(parsed) ? 0 : parsed;
+  return isNaN(parsed) ? 0 : ceilAmount(parsed);
 };
 
 const getSoldePoints = (solde: any): number => {
@@ -209,10 +202,8 @@ export default function POS() {
 
   // ── Paiement ──────────────────────────────────────────────────────────────
 
-  const round2 = (n: number) => Math.round(n * 100) / 100;
-
   const totalVerse = lignesPaiement.reduce((s, l) => s + l.montant, 0);
-  const resteAPayer = Math.max(0, round2(total - totalVerse));
+  const resteAPayer = Math.max(0, total - totalVerse);
   const monnaieTotale = lignesPaiement
     .filter(l => l.mode === 'especes')
     .reduce((s, l) => s + ((l.montant_recu ?? 0) - l.montant), 0);
@@ -223,11 +214,11 @@ export default function POS() {
     .reduce((s, l) => s + l.montant, 0);
 
   const pointsAGagner = (selectedClient && fideliteConfig && fideliteConfig.montant_tranche > 0)
-    ? Math.floor(montantComptantAffecte / fideliteConfig.montant_tranche) * fideliteConfig.points_accordes
+    ? Math.floor(montantComptantAffecte / ceilAmount(fideliteConfig.montant_tranche)) * fideliteConfig.points_accordes
     : 0;
 
   const ajouterLignePaiement = (montantForce?: number): LignePaiement | null => {
-    const montant = montantForce ?? montantEnCours;
+    const montant = ceilAmount(montantForce ?? montantEnCours);
 
     if (modeEnCours === 'dette' && !selectedClient) {
       toast.error('Sélectionnez un client pour le paiement à crédit'); return null;
@@ -268,7 +259,7 @@ export default function POS() {
   const handlePayment = async (paiementsOverride?: LignePaiement[]) => {
     const paiements = paiementsOverride ?? lignesPaiement;
     const totalPaye = paiements.reduce((sum, line) => sum + line.montant, 0);
-    const reste = Math.max(0, round2(total - totalPaye));
+    const reste = Math.max(0, total - totalPaye);
 
     if (reste > 0) {
       toast.error(`Il reste ${fmt(reste)} à payer`); return;
@@ -365,7 +356,7 @@ export default function POS() {
 
       paiements = [...lignesPaiement, ligne];
       const totalPaye = paiements.reduce((sum, line) => sum + line.montant, 0);
-      const nouveauReste = Math.max(0, round2(total - totalPaye));
+      const nouveauReste = Math.max(0, total - totalPaye);
 
       if (nouveauReste > 0) {
         toast.message(`Reste à payer: ${fmt(nouveauReste)}`);
@@ -940,7 +931,7 @@ export default function POS() {
                           type="number"
                           step="1"
                           value={montantEnCours || ''}
-                          onChange={e => setMontantEnCours(parseFloat(e.target.value) || 0)}
+                          onChange={e => setMontantEnCours(ceilAmount(parseFloat(e.target.value) || 0))}
                           placeholder="0"
                           className="w-full bg-transparent text-2xl font-medium text-gray-900
                                      outline-none placeholder-gray-300"

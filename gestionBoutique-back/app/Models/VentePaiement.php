@@ -20,9 +20,9 @@ class VentePaiement extends Model
     ];
 
     protected $casts = [
-        'montant'         => 'decimal:2',
-        'montant_recu'    => 'decimal:2',
-        'monnaie_rendue'  => 'decimal:2',
+        'montant'         => 'integer',
+        'montant_recu'    => 'integer',
+        'monnaie_rendue'  => 'integer',
     ];
 
     public function vente(): BelongsTo
