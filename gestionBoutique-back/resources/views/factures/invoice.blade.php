@@ -331,6 +331,9 @@
                             @if($boutique->telephone_boutique)
                                 <div>Tél: {{ $boutique->telephone_boutique }}</div>
                             @endif
+                            @if($boutique->ninea_rccm)
+                                <div>NINEA/RCCM: {{ $boutique->ninea_rccm }}</div>
+                            @endif
                             
                         </div>
                     </div>

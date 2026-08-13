@@ -20,6 +20,7 @@ const registerSchema = z.object({
   nom_boutique: z.string().min(1, 'Le nom de la boutique est requis'),
   adresse_boutique: z.string().min(1, 'L\'adresse de la boutique est requise'),
   telephone_boutique: z.string().min(1, 'Le téléphone de la boutique est requis'),
+  ninea_rccm: z.string().optional(),
 }).refine((data) => data.mot_de_passe === data.mot_de_passe_confirmation, {
   message: 'Les mots de passe ne correspondent pas',
   path: ['mot_de_passe_confirmation'],
@@ -52,6 +53,7 @@ function Register() {
           nom_boutique: data.nom_boutique,
           adresse_boutique: data.adresse_boutique,
           telephone_boutique: data.telephone_boutique,
+          ninea_rccm: data.ninea_rccm || null,
         }),
       });
 
@@ -218,6 +220,20 @@ function Register() {
                 {errors.telephone_boutique && (
                   <p className="text-red-500 text-sm mt-1">{errors.telephone_boutique.message}</p>
                 )}
+              </div>
+
+              {/* NINEA / RCCM */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  NINEA / RCCM
+                </label>
+                <input
+                  type="text"
+                  {...register('ninea_rccm')}
+                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring focus:ring-blue-200"
+                  placeholder="Ex: NINEA 123456789"
+                />
+                <p className="text-xs text-gray-500 mt-1">Champ optionnel.</p>
               </div>
             </div>
           </div>

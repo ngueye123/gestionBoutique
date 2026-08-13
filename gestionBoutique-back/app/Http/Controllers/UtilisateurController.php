@@ -32,7 +32,8 @@ class UtilisateurController extends Controller
             'nom_boutique' => 'required|string|max:50',
             'adresse_boutique' => 'required|string|max:255',
             'telephone_boutique' => 'string|max:50',
-            'logo_boutique' => 'string|max:500'
+            'logo_boutique' => 'string|max:500',
+            'ninea_rccm' => 'nullable|string|max:255'
         ]);
 
         if (Utilisateur::where('email', $validated['email'])->exists()) {

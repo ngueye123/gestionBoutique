@@ -168,6 +168,7 @@
         <div class="shop-details">
             @if($boutique->adresse_boutique)<div>{{ $boutique->adresse_boutique }}</div>@endif
             @if($boutique->telephone_boutique)<div>Tel: {{ $boutique->telephone_boutique }}</div>@endif
+            @if($boutique->ninea_rccm)<div>NINEA/RCCM: {{ $boutique->ninea_rccm }}</div>@endif
         </div>
     </div>
 
