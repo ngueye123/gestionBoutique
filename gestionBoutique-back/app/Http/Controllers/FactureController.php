@@ -262,6 +262,9 @@ class FactureController extends Controller
         if ($boutique->telephone_boutique) {
             $mm += 2.3;
         }
+        if ($boutique->ninea_rccm) {
+            $mm += 2.3;
+        }
 
         $mm += 8; // titre FACTURE
 

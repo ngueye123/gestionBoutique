@@ -16,6 +16,7 @@ interface BoutiqueProfile {
   adresse_boutique: string | null;
   telephone_boutique: string | null;
   logo_boutique: string | null;
+  ninea_rccm: string | null;
 }
 
 export default function ProfilBoutique() {
@@ -64,6 +65,7 @@ export default function ProfilBoutique() {
           adresse_boutique: profile.adresse_boutique,
           telephone_boutique: profile.telephone_boutique,
           logo_boutique: profile.logo_boutique,
+          ninea_rccm: profile.ninea_rccm,
         }),
       });
       const data = await res.json();
@@ -184,6 +186,18 @@ export default function ProfilBoutique() {
               value={profile.telephone_boutique ?? ''}
               onChange={e => updateField('telephone_boutique', e.target.value)}
               disabled={!isPatron}
+              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm
+                         focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-gray-500">NINEA / RCCM</label>
+            <input
+              type="text"
+              value={profile.ninea_rccm ?? ''}
+              onChange={e => updateField('ninea_rccm', e.target.value)}
+              disabled={!isPatron}
+              placeholder="Champ optionnel"
               className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-sm
                          focus:ring-2 focus:ring-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
             />

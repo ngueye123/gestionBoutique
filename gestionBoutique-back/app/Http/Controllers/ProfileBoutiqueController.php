@@ -35,6 +35,7 @@ class ProfileBoutiqueController extends Controller
                 'adresse_boutique' => $owner->adresse_boutique,
                 'telephone_boutique' => $owner->telephone_boutique,
                 'logo_boutique' => $owner->logo_boutique,
+                'ninea_rccm' => $owner->ninea_rccm,
             ],
         ]);
     }
@@ -59,6 +60,7 @@ class ProfileBoutiqueController extends Controller
             'adresse_boutique' => 'nullable|string|max:500',
             'telephone_boutique' => 'nullable|string|max:50',
             'logo_boutique' => 'nullable|string|max:255',
+            'ninea_rccm' => 'nullable|string|max:255',
         ]);
 
         $owner->update($validated);
@@ -76,6 +78,7 @@ class ProfileBoutiqueController extends Controller
                 'adresse_boutique' => $owner->adresse_boutique,
                 'telephone_boutique' => $owner->telephone_boutique,
                 'logo_boutique' => $owner->logo_boutique,
+                'ninea_rccm' => $owner->ninea_rccm,
             ],
         ]);
     }

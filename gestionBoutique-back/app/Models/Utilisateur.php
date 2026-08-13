@@ -29,6 +29,7 @@ class Utilisateur extends Authenticatable implements JWTSubject, MustVerifyEmail
         'adresse_boutique',     
         'telephone_boutique',
         'logo_boutique',
+        'ninea_rccm',
         'default_invoice_format',
         'thermal_printer_name',
         'a4_printer_name'
