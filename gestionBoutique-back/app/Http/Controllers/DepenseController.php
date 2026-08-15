@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use App\Services\DashboardCacheService;
 use App\Models\Caisse;
+use App\Models\DepenseReglement;
 class DepenseController extends Controller
 {
     use RoleHelper;
@@ -90,6 +91,7 @@ class DepenseController extends Controller
 
         // ── Requête de base ───────────────────────────────────────────────────
         $query = Depense::byUtilisateur($patron->id)
+            ->with('reglements')
             ->orderByDesc('date_depense')
             ->orderByDesc('created_at');
 
@@ -209,6 +211,7 @@ class DepenseController extends Controller
         try {
             $validated = $request->validate([
                 'montant'      => 'required|numeric|min:1|max:99999999',
+                'montant_regle' => 'nullable|numeric|min:0',
                 'date_depense' => 'required|date|before_or_equal:today',
                 'description'  => 'required|string|min:3|max:500',
                 'categorie'    => 'nullable|string|in:' . implode(',', array_keys(Depense::CATEGORIES)),
@@ -224,6 +227,15 @@ class DepenseController extends Controller
         $actor   = $this->getActor();
         $patron  = $this->resolveOwner();
         $montant = floatval($validated['montant']);
+        $montantRegle = floatval($validated['montant_regle'] ?? 0);
+
+        if ($montantRegle > $montant) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Le montant réglé ne peut pas dépasser le montant de la dépense.',
+                'errors' => ['montant_regle' => ['Le montant réglé ne peut pas dépasser le montant de la dépense.']],
+            ], 422);
+        }
 
         DB::beginTransaction();
         try {
@@ -232,11 +244,11 @@ class DepenseController extends Controller
             $caisse            = Caisse::pour($actor);
             $caisseVerrouillee = Caisse::where('id', $caisse->id)->lockForUpdate()->first();
 
-            if ($montant > $caisseVerrouillee->solde_actuel) {
+            if ($montantRegle > $caisseVerrouillee->solde_actuel) {
                 DB::rollBack();
                 return response()->json([
                     'success' => false,
-                    'message' => "Le montant ({$montant} F) dépasse le solde disponible en caisse ({$caisseVerrouillee->solde_actuel} F).",
+                    'message' => "Le montant réglé ({$montantRegle} F) dépasse le solde disponible en caisse ({$caisseVerrouillee->solde_actuel} F).",
                 ], 422);
             }
 
@@ -244,18 +256,31 @@ class DepenseController extends Controller
                 'utilisateur_id' => $patron->id,
                 'caisse_id'      => $caisse->id,
                 'montant'        => $montant,
+                'montant_regle'  => $montantRegle,
                 'date_depense'   => $validated['date_depense'],
                 'description'    => trim($validated['description']),
                 'categorie'      => $validated['categorie'] ?? 'autre',
             ]);
 
-            $mouvement = $caisse->debiter(
-                $montant,
-                "Dépense #{$depense->id} — {$depense->description}",
-                'depense'
-            );
+            if ($montantRegle > 0) {
+                $mouvement = $caisse->debiter(
+                    $montantRegle,
+                    "Règlement dépense #{$depense->id} — {$depense->description}",
+                    'depense'
+                );
 
-            $depense->update(['mouvement_caisse_id' => $mouvement->id]);
+                DepenseReglement::create([
+                    'depense_id' => $depense->id,
+                    'utilisateur_id' => $patron->id,
+                    'employe_id' => $actor instanceof Employe ? $actor->id : null,
+                    'caisse_id' => $caisse->id,
+                    'mouvement_caisse_id' => $mouvement->id,
+                    'montant' => $montantRegle,
+                    'moyen_paiement' => 'especes',
+                ]);
+
+                $depense->update(['mouvement_caisse_id' => $mouvement->id]);
+            }
 
             DB::commit();
         } catch (\Exception $e) {
@@ -271,7 +296,9 @@ class DepenseController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Dépense enregistrée et déduite de la caisse.',
+            'message' => $montantRegle > 0
+                ? 'Dépense enregistrée et règlement déduit de la caisse.'
+                : 'Dépense enregistrée avec une dette à régler.',
             'depense' => $depense->fresh(),
         ], 201);
     }
@@ -291,6 +318,7 @@ class DepenseController extends Controller
         try {
             $validated = $request->validate([
                 'montant'      => 'required|numeric|min:1|max:99999999',
+                'montant_regle' => 'nullable|numeric|min:0',
                 'date_depense' => 'required|date|before_or_equal:today',
                 'description'  => 'required|string|min:3|max:500',
                 'categorie'    => 'nullable|string|in:' . implode(',', array_keys(Depense::CATEGORIES)),
@@ -307,32 +335,17 @@ class DepenseController extends Controller
 
         $nouveauMontant = floatval($validated['montant']);
         $ancienMontant  = (float) $depense->montant;
-        $delta          = $nouveauMontant - $ancienMontant; // > 0 : dépense augmentée
+        $montantRegle = (float) $depense->montant_regle;
+
+        if ($nouveauMontant < $montantRegle) {
+            return response()->json([
+                'success' => false,
+                'message' => "Le montant ne peut pas être inférieur au montant déjà réglé ({$montantRegle} F).",
+            ], 422);
+        }
 
         DB::beginTransaction();
         try {
-            // On réajuste la caisse D'ORIGINE (celle débitée à la création),
-            // pas forcément celle de la personne qui modifie aujourd'hui.
-            $caisse = $depense->caisse_id ? Caisse::find($depense->caisse_id) : null;
-
-            if ($caisse && abs($delta) > 0.001) {
-                $caisseVerrouillee = Caisse::where('id', $caisse->id)->lockForUpdate()->first();
-
-                if ($delta > 0 && $delta > $caisseVerrouillee->solde_actuel) {
-                    DB::rollBack();
-                    return response()->json([
-                        'success' => false,
-                        'message' => "Le complément de dépense ({$delta} F) dépasse le solde disponible en caisse ({$caisseVerrouillee->solde_actuel} F).",
-                    ], 422);
-                }
-
-                if ($delta > 0) {
-                    $caisse->debiter($delta, "Ajustement dépense #{$depense->id} (montant augmenté)", 'depense');
-                } else {
-                    $caisse->crediter(abs($delta), 'ajustement_depense', null, "Ajustement dépense #{$depense->id} (montant réduit)");
-                }
-            }
-
             $depense->update([
                 'montant'      => $nouveauMontant,
                 'date_depense' => $validated['date_depense'],
@@ -374,11 +387,20 @@ class DepenseController extends Controller
 
         DB::beginTransaction();
         try {
-            if ($depense->caisse_id) {
+            $reglementsEspeces = $depense->reglements()
+                ->where('moyen_paiement', 'especes')
+                ->sum('montant');
+            // Les anciennes dépenses n'ont pas de lignes de règlement : elles
+            // ont été débitées intégralement à leur création.
+            $montantSorti = $depense->reglements()->exists()
+                ? (float) $reglementsEspeces
+                : (float) $depense->montant_regle;
+
+            if ($depense->caisse_id && $montantSorti > 0) {
                 $caisse = Caisse::find($depense->caisse_id);
                 if ($caisse) {
                     $caisse->crediter(
-                        (float) $depense->montant,
+                        $montantSorti,
                         'ajustement_depense',
                         null,
                         "Annulation dépense #{$depense->id} — {$depense->description}"
@@ -403,6 +425,76 @@ class DepenseController extends Controller
             'success' => true,
             'message' => 'Dépense supprimée et montant recrédité en caisse.',
         ]);
+    }
+
+    /** POST /api/depenses/{id}/reglements */
+    public function regler(Request $request, int $id): JsonResponse
+    {
+        if (!$this->canManageDepenses()) {
+            return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent gérer les dépenses');
+        }
+
+        $validated = $request->validate([
+            'montant' => 'required|numeric|min:0.01',
+            'moyen_paiement' => 'required|in:especes,wave,orange_money,carte',
+            'note' => 'nullable|string|max:500',
+        ]);
+
+        $actor = $this->getActor();
+        $patron = $this->resolveOwner();
+
+        DB::beginTransaction();
+        try {
+            $depense = Depense::byUtilisateur($patron->id)
+                ->lockForUpdate()
+                ->findOrFail($id);
+            $reste = (float) $depense->montant - (float) $depense->montant_regle;
+            $montant = (float) $validated['montant'];
+
+            if ($montant > $reste + 0.001) {
+                DB::rollBack();
+                return response()->json(['success' => false, 'message' => "Le règlement ne peut pas dépasser le reste dû ({$reste} F)."], 422);
+            }
+
+            $caisse = null;
+            $mouvement = null;
+            if ($validated['moyen_paiement'] === 'especes') {
+                $caisse = Caisse::pour($actor);
+                $caisseVerrouillee = Caisse::where('id', $caisse->id)->lockForUpdate()->first();
+                if ($montant > (float) $caisseVerrouillee->solde_actuel) {
+                    DB::rollBack();
+                    return response()->json(['success' => false, 'message' => "Le règlement ({$montant} F) dépasse le solde disponible en caisse ({$caisseVerrouillee->solde_actuel} F)."], 422);
+                }
+                $mouvement = $caisse->debiter($montant, "Règlement dépense #{$depense->id} — {$depense->description}", 'depense');
+            }
+
+            $reglement = DepenseReglement::create([
+                'depense_id' => $depense->id,
+                'utilisateur_id' => $patron->id,
+                'employe_id' => $actor instanceof Employe ? $actor->id : null,
+                'caisse_id' => $caisse?->id,
+                'mouvement_caisse_id' => $mouvement?->id,
+                'montant' => $montant,
+                'moyen_paiement' => $validated['moyen_paiement'],
+                'note' => $validated['note'] ?? null,
+            ]);
+
+            $depense->increment('montant_regle', $montant);
+            DB::commit();
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Erreur règlement dépense: ' . $e->getMessage());
+            return response()->json(['success' => false, 'message' => 'Impossible d’enregistrer le règlement.'], 500);
+        }
+
+        $this->dashboardCache->invalidate($patron->id);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Règlement de la dépense enregistré.',
+            'depense' => $depense->fresh('reglements'),
+            'reglement' => $reglement,
+        ], 201);
     }
 
     // ─────────────────────────────────────────────────────────────────────────

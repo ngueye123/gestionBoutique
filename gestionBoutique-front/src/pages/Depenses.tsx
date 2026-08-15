@@ -64,7 +64,7 @@ function bornesPeriode(type: 'today' | 'week' | 'month' | 'year'): {
 export default function Depenses() {
   const {
     data, loading, submitting,
-    charger, creer, modifier, supprimer,
+    charger, creer, modifier, supprimer, regler,
     mettreAJourLocal, supprimerLocal,
   } = useDepenses();
 
@@ -81,6 +81,9 @@ export default function Depenses() {
   const [editingId, setEditingId]   = useState<number | null>(null);
   const [form, setForm]             = useState<DepenseFormData>(DEPENSE_FORM_VIDE);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [reglementId, setReglementId] = useState<number | null>(null);
+  const [reglementMontant, setReglementMontant] = useState('');
+  const [reglementMoyen, setReglementMoyen] = useState<'especes' | 'wave' | 'orange_money' | 'carte'>('especes');
 
   // ── Affichage répartition catégories ─────────────────────────────────────
   const [showCategories, setShowCategories] = useState(false);
@@ -117,6 +120,8 @@ export default function Depenses() {
     if (!form.description.trim()) errs.description = 'La description est obligatoire';
     if (!form.montant || parseFloat(form.montant) < 1)
       errs.montant = 'Le montant doit être ≥ 1 F';
+    if (!editingId && (parseFloat(form.montant_regle || '0') < 0 || parseFloat(form.montant_regle || '0') > parseFloat(form.montant || '0')))
+      errs.montant_regle = 'Le montant réglé doit être compris entre 0 et le montant total';
     if (!form.date_depense) errs.date_depense = 'La date est obligatoire';
     setFormErrors(errs);
     return Object.keys(errs).length === 0;
@@ -157,6 +162,28 @@ export default function Depenses() {
     setEditingId(null);
     setFormErrors({});
     setShowForm(false);
+  };
+
+  const ouvrirReglement = (d: Depense) => {
+    const reste = Number(d.montant) - Number(d.montant_regle || 0);
+    setReglementId(d.id);
+    setReglementMontant(String(Math.max(0, reste)));
+    setReglementMoyen('especes');
+  };
+
+  const handleReglement = async () => {
+    if (!reglementId || !reglementMontant || Number(reglementMontant) <= 0) {
+      toast.error('Saisissez un montant de règlement valide');
+      return;
+    }
+    const result = await regler(reglementId, Number(reglementMontant), reglementMoyen);
+    if (result.success) {
+      toast.success(result.message);
+      setReglementId(null);
+      chargerDonnees();
+    } else {
+      toast.error(result.message);
+    }
   };
 
   const ouvrirEdition = (d: Depense) => {
@@ -288,6 +315,25 @@ export default function Depenses() {
               )}
             </div>
 
+            {!editingId && (
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1">
+                  Montant payé maintenant (F)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={form.montant_regle}
+                  onChange={e => setForm(f => ({ ...f, montant_regle: e.target.value }))}
+                  placeholder="0 = dette totale"
+                  className={`w-full border rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 ${formErrors.montant_regle ? 'border-red-400' : ''}`}
+                />
+                <p className="text-xs text-gray-400 mt-1">0 pour une dette totale, ou une partie du montant.</p>
+                {formErrors.montant_regle && <p className="text-red-500 text-xs mt-1">{formErrors.montant_regle}</p>}
+              </div>
+            )}
+
             {/* Catégorie */}
             <div className="md:col-span-2">
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -326,6 +372,32 @@ export default function Depenses() {
             >
               Annuler
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Filtres ─────────────────────────────────────────────────────── */}
+      {reglementId && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold text-blue-900">Régler la dépense</h2>
+            <button onClick={() => setReglementId(null)} className="text-blue-500"><X className="w-5 h-5" /></button>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-3 items-end">
+            <label className="flex-1 w-full text-xs font-medium text-blue-900">
+              Montant du règlement (F)
+              <input type="number" min="0.01" step="1" value={reglementMontant} onChange={e => setReglementMontant(e.target.value)} className="mt-1 w-full border rounded-lg p-2 text-sm bg-white" />
+            </label>
+            <label className="flex-1 w-full text-xs font-medium text-blue-900">
+              Moyen de paiement
+              <select value={reglementMoyen} onChange={e => setReglementMoyen(e.target.value as typeof reglementMoyen)} className="mt-1 w-full border rounded-lg p-2 text-sm bg-white">
+                <option value="especes">Espèces</option>
+                <option value="wave">Wave</option>
+                <option value="orange_money">Orange Money</option>
+                <option value="carte">Carte</option>
+              </select>
+            </label>
+            <button onClick={handleReglement} disabled={submitting} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">Enregistrer le règlement</button>
           </div>
         </div>
       )}
@@ -518,6 +590,9 @@ export default function Depenses() {
                                  text-gray-500 uppercase tracking-wider">
                     Montant
                   </th>
+                  <th className="px-5 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Reste dû
+                  </th>
                   <th className="px-5 py-3 text-center text-xs font-semibold
                                  text-gray-500 uppercase tracking-wider">
                     Actions
@@ -550,8 +625,23 @@ export default function Depenses() {
                       {formatMontant(Number(d.montant))}
                     </td>
 
+                    <td className="px-5 py-3 text-right text-sm whitespace-nowrap">
+                      <span className={Number(d.montant) - Number(d.montant_regle || 0) > 0 ? 'text-orange-600 font-semibold' : 'text-green-600'}>
+                        {formatMontant(Math.max(0, Number(d.montant) - Number(d.montant_regle || 0)))}
+                      </span>
+                    </td>
+
                     <td className="px-5 py-3">
                       <div className="flex items-center justify-center gap-3">
+                        {Number(d.montant) - Number(d.montant_regle || 0) > 0 && (
+                          <button
+                            onClick={() => ouvrirReglement(d)}
+                            className="text-green-600 hover:text-green-800 text-xs font-medium"
+                            title="Enregistrer un règlement"
+                          >
+                            Régler
+                          </button>
+                        )}
                         <button
                           onClick={() => ouvrirEdition(d)}
                           className="text-blue-500 hover:text-blue-700 transition"

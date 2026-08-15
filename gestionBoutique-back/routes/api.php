@@ -141,6 +141,7 @@ Route::middleware(['jwt.custom'])->group(function () {
     Route::get('/stats-annuelles',  [DepenseController::class, 'statsAnnuelles']);
     Route::get('/',                  [DepenseController::class, 'index']);
     Route::post('/',                 [DepenseController::class, 'store']);
+    Route::post('/{id}/reglements',  [DepenseController::class, 'regler']);
     Route::put('/{id}',             [DepenseController::class, 'update']);
     Route::delete('/{id}',          [DepenseController::class, 'destroy']);
     });

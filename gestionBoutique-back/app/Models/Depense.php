@@ -5,6 +5,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Depense extends Model
 {
@@ -15,6 +16,7 @@ class Depense extends Model
         'caisse_id',
         'mouvement_caisse_id',
         'montant',
+        'montant_regle',
         'date_depense',
         'description',
         'categorie',
@@ -22,6 +24,7 @@ class Depense extends Model
 
     protected $casts = [
         'montant'      => 'decimal:2',
+        'montant_regle' => 'decimal:2',
         'date_depense' => 'date',
         'created_at'   => 'datetime',
         'updated_at'   => 'datetime',
@@ -42,6 +45,16 @@ class Depense extends Model
     public function mouvementCaisse(): BelongsTo
     {
         return $this->belongsTo(MouvementCaisse::class);
+    }
+
+    public function reglements(): HasMany
+    {
+        return $this->hasMany(DepenseReglement::class);
+    }
+
+    public function getSoldeRestantAttribute(): float
+    {
+        return max(0, (float) $this->montant - (float) $this->montant_regle);
     }
 
     // ─── Scopes ─────────────────────────────────────────────────────────────

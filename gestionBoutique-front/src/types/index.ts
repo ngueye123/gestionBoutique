@@ -357,15 +357,28 @@ export interface Depense {
   id: number
   utilisateur_id: number
   montant: number
+  montant_regle: number
+  solde_restant?: number
   date_depense: string
   description: string
   categorie: string
   created_at: string
   updated_at: string
+  reglements?: DepenseReglement[]
+}
+
+export interface DepenseReglement {
+  id: number
+  depense_id: number
+  montant: number
+  moyen_paiement: 'especes' | 'wave' | 'orange_money' | 'carte'
+  note?: string | null
+  created_at: string
 }
 
 export interface DepenseFormData {
   montant: string
+  montant_regle: string
   date_depense: string
   description: string
   categorie: string

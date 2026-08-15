@@ -16,6 +16,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
 
 export const DEPENSE_FORM_VIDE: DepenseFormData = {
   montant:      '',
+  montant_regle: '',
   date_depense: (() => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -84,6 +85,7 @@ export function useDepenses() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           montant:      parseFloat(form.montant),
+          montant_regle: parseFloat(form.montant_regle || '0'),
           date_depense: form.date_depense,
           description:  form.description.trim(),
           categorie:    form.categorie,
@@ -117,6 +119,20 @@ export function useDepenses() {
     } finally {
       setSubmitting(false);
     }
+  }, []);
+
+  const regler = useCallback(async (
+    id: number,
+    montant: number,
+    moyen_paiement: 'especes' | 'wave' | 'orange_money' | 'carte',
+    note?: string,
+  ): Promise<DepenseResponse> => {
+    const res = await fetchWithAuth(`${API_URL}/depenses/${id}/reglements`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ montant, moyen_paiement, note }),
+    });
+    return await res.json();
   }, []);
 
   // ── Suppression ───────────────────────────────────────────────────────────
@@ -185,6 +201,7 @@ export function useDepenses() {
     creer,
     modifier,
     supprimer,
+    regler,
     chargerStatsAnnuelles,
     mettreAJourLocal,
     supprimerLocal,
