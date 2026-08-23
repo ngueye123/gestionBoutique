@@ -113,4 +113,16 @@ return [
         'name' => env('MAIL_FROM_NAME', 'Example'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Contact Form Recipient
+    |--------------------------------------------------------------------------
+    |
+    | Adresse email qui reçoit les messages envoyés depuis le formulaire de
+    | contact de la page vitrine.
+    |
+    */
+
+    'contact_to' => env('CONTACT_EMAIL'),
+
 ];

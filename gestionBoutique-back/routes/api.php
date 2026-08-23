@@ -21,11 +21,13 @@ use App\Http\Controllers\InvoiceSettingController;
 use App\Http\Controllers\QzTrayController;
 use App\Http\Controllers\PrinterSettingController;
 use App\Http\Controllers\ProfileBoutiqueController;
+use App\Http\Controllers\ContactController;
 
 // ============================================================
 // Routes publiques
 // ============================================================
 Route::post('/register', [UtilisateurController::class, 'register']);
+Route::post('/contact', [ContactController::class, 'store'])->middleware('throttle:5,1');
 Route::post('/login', [UtilisateurController::class, 'login'])-> middleware('throttle:5,1') ;
 Route::post('/employe/login', [EmployeAuthController::class, 'login'])-> middleware('throttle:5,1') ;
 

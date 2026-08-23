@@ -109,8 +109,8 @@ export default function VentesHistorique() {
         showEmployeFiltre={isPatronOuAdmin}
       />
 
-      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="bg-white rounded-xl border border-gray-200 overflow-x-auto">
+        <table className="w-full text-sm min-w-[640px]">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs text-gray-500 uppercase tracking-wide">
               <th className="px-4 py-3">Référence</th>
