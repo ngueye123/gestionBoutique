@@ -18,7 +18,7 @@ import { PriceOverrideModal } from '../components/PriceOverrideModal';
 import type { BloquageInfo } from '../hooks/useCaisse';
 import { UNIT_CONFIG, compatibleUnits, fromBase, lineSubtotal } from '../lib/unitConverter';
 
-type PaymentMethod = 'especes' | 'wave' | 'orange_money' | 'dette';
+type PaymentMethod = 'especes' | 'wave' | 'orange_money' | 'dette' | 'acompte';
 
 interface LignePaiement {
   id: string;
@@ -43,6 +43,8 @@ const getSoldeDette = (solde: any): number => {
   return isNaN(parsed) ? 0 : ceilAmount(parsed);
 };
 
+const getAcompteDisponible = (solde: any): number => Math.max(0, -getSoldeDette(solde));
+
 const getSoldePoints = (solde: any): number => {
   const parsed = parseInt(String(solde || 0), 10);
   return isNaN(parsed) ? 0 : parsed;
@@ -61,6 +63,7 @@ const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string; icon: React.
   { value: 'wave',         label: 'Wave',          icon: <Smartphone className="w-4 h-4" /> },
   { value: 'orange_money', label: 'Orange Money',  icon: <CreditCard className="w-4 h-4" /> },
   { value: 'dette',        label: 'À crédit',      icon: <Clock className="w-4 h-4" /> },
+  { value: 'acompte',      label: 'Acompte',       icon: <CreditCard className="w-4 h-4" /> },
 ];
 
 // ─── Composant principal ──────────────────────────────────────────────────────
@@ -220,8 +223,8 @@ export default function POS() {
   const ajouterLignePaiement = (montantForce?: number): LignePaiement | null => {
     const montant = ceilAmount(montantForce ?? montantEnCours);
 
-    if (modeEnCours === 'dette' && !selectedClient) {
-      toast.error('Sélectionnez un client pour le paiement à crédit'); return null;
+    if (['dette', 'acompte'].includes(modeEnCours) && !selectedClient) {
+      toast.error('Sélectionnez un client pour ce moyen de paiement'); return null;
     }
     if (montant <= 0) {
       toast.error('Montant invalide'); return null;
@@ -241,6 +244,9 @@ export default function POS() {
     } else {
       if (montant > resteAPayer) {
         toast.error(`Le montant dépasse le reste à payer (${fmt(resteAPayer)})`); return null;
+      }
+      if (modeEnCours === 'acompte' && montant > getAcompteDisponible(selectedClient?.solde_dette)) {
+        toast.error(`Le montant dépasse l'acompte disponible (${fmt(getAcompteDisponible(selectedClient?.solde_dette))})`); return null;
       }
       const ligne: LignePaiement = {
         id: crypto.randomUUID(),
@@ -301,12 +307,19 @@ export default function POS() {
         setLastSalePoints(result.fidelite?.points ?? 0);
 
         const detteLine = paiements.find(l => l.mode === 'dette');
+        const acompteLine = paiements.find(l => l.mode === 'acompte');
         const pts = result.fidelite?.points ?? 0;
 
         if (detteLine) {
           const solde = getSoldeDette(result.nouveau_solde_client);
           toast.success(
             `Vente enregistrée ! Part à crédit — nouvelle dette : ${fmt(solde)}` +
+            (pts > 0 ? ` · +${pts} pts fidélité` : '')
+          );
+        } else if (acompteLine) {
+          const solde = getSoldeDette(result.nouveau_solde_client);
+          toast.success(
+            `Vente enregistrée ! Acompte restant : ${fmt(Math.max(0, -solde))}` +
             (pts > 0 ? ` · +${pts} pts fidélité` : '')
           );
         } else if (monnaieTotale > 0) {
@@ -770,7 +783,7 @@ export default function POS() {
                   </div>
                   <div className="text-right">
                     <span className={`block text-sm font-medium ${dette > 0 ? 'text-red-600' : 'text-green-600'}`}>
-                      {fmt(dette)}
+                      {dette > 0 ? `Dette : ${fmt(dette)}` : `Acompte : ${fmt(-dette)}`}
                     </span>
                     <span className="block text-[11px] text-purple-500">
                       {getSoldePoints(client.solde_points)} pts
@@ -842,11 +855,11 @@ export default function POS() {
         <div className="mt-2.5 pt-2.5 border-t border-blue-200 grid grid-cols-2 gap-2 text-xs">
           <div>
             <span className="text-gray-500">Dette actuelle</span>
-            <p className="font-medium text-red-600">{fmt(getSoldeDette(selectedClient.solde_dette))}</p>
+            <p className="font-medium text-red-600">{fmt(Math.max(0, getSoldeDette(selectedClient.solde_dette)))}</p>
           </div>
           <div>
-            <span className="text-gray-500">Points fidélité</span>
-            <p className="font-medium text-purple-600">{getSoldePoints(selectedClient.solde_points)} pts</p>
+            <span className="text-gray-500">Acompte disponible</span>
+            <p className="font-medium text-green-600">{fmt(getAcompteDisponible(selectedClient.solde_dette))}</p>
           </div>
         </div>
       </div>
@@ -899,7 +912,13 @@ export default function POS() {
                           key={pm.value}
                           onClick={() => {
                             setModeEnCours(pm.value);
-                            setMontantEnCours(pm.value === 'especes' ? 0 : resteAPayer);
+                            setMontantEnCours(
+                              pm.value === 'especes'
+                                ? 0
+                                : pm.value === 'acompte'
+                                  ? Math.min(resteAPayer, getAcompteDisponible(selectedClient?.solde_dette))
+                                  : resteAPayer
+                            );
                           }}
                           className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border
                                       text-sm font-medium transition-all
@@ -917,6 +936,18 @@ export default function POS() {
                     {modeEnCours === 'dette' && !selectedClient && (
                       <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 shrink-0">
                         Sélectionnez un client à gauche pour un paiement à crédit
+                      </p>
+                    )}
+
+                    {modeEnCours === 'acompte' && !selectedClient && (
+                      <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 shrink-0">
+                        Sélectionnez un client pour utiliser un acompte
+                      </p>
+                    )}
+
+                    {modeEnCours === 'acompte' && selectedClient && (
+                      <p className="text-xs text-green-700 bg-green-50 border border-green-200 rounded-lg px-3 py-2 shrink-0">
+                        Acompte disponible : {fmt(getAcompteDisponible(selectedClient.solde_dette))}
                       </p>
                     )}
 

@@ -54,7 +54,20 @@ export interface Client {
   created_at: string
   updated_at: string
   remboursements?: Remboursement[]
+  acomptes?: Acompte[]
   ventes?: VenteCredit[]
+}
+
+export interface Acompte {
+  id: number
+  client_id: number
+  utilisateur_id: number
+  employe_id: number | null
+  montant: number
+  moyen_paiement: 'especes' | 'wave' | 'orange_money' | 'carte'
+  note: string | null
+  created_at: string
+  employe?: EmployeUser
 }
 
 export interface Remboursement {

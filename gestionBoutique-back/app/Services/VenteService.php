@@ -54,14 +54,14 @@ class VenteService
         $paiements = $validated['paiements'];
         $clientId  = $validated['client_id'] ?? null;   
 
-        // --- Contrôle C3 : dette exige un client rattaché ---
-        $ligneDette = collect($paiements)->firstWhere('mode', 'dette');
-        if ($ligneDette && !$clientId) {
-            throw new \RuntimeException('Client requis pour une vente à crédit', 400);
+        // --- Contrôle C3 : dette ou acompte exigent un client rattaché ---
+        $ligneClient = collect($paiements)->first(fn (array $paiement) => in_array($paiement['mode'], ['dette', 'acompte'], true));
+        if ($ligneClient && !$clientId) {
+            throw new \RuntimeException('Client requis pour une vente à crédit ou avec acompte', 400);
         }
 
         $client = $clientId
-            ? Client::byUtilisateur($ownerId)->findOrFail($clientId)
+            ? Client::byUtilisateur($ownerId)->lockForUpdate()->findOrFail($clientId)
             : null;
 
         DB::beginTransaction();
@@ -172,11 +172,19 @@ class VenteService
                         );
                     }
 
+                    if ($mode === 'acompte' && (!$client || $montant > $client->acompteDisponible())) {
+                        $disponible = $client?->acompteDisponible() ?? 0;
+                        throw new \RuntimeException(
+                            "Le montant en acompte ({$montant}) dépasse le crédit disponible ({$disponible})",
+                            400
+                        );
+                    }
+
                     $lignesAPersister[] = [
                         'mode'                    => $mode,
                         'montant'                 => $montant,
                         'reference_transaction'   => $p['reference_transaction'] ?? null,
-                        'client_id'               => $mode === 'dette' ? $clientId : null,
+                        'client_id'               => in_array($mode, ['dette', 'acompte'], true) ? $clientId : null,
                     ];
 
                     $resteAPayer = $resteAPayer - $montant;
@@ -254,6 +262,10 @@ class VenteService
 
                 if ($ligne['mode'] === 'dette' && $client) {
                     $client->ajouterDette($ligne['montant']);
+                }
+
+                if ($ligne['mode'] === 'acompte' && $client) {
+                    $client->consommerAcompte($ligne['montant']);
                 }
             }
 

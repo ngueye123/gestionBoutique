@@ -49,6 +49,14 @@ class Client extends Model
     }
 
     /**
+     * Relation avec les acomptes versés par le client.
+     */
+    public function acomptes(): HasMany
+    {
+        return $this->hasMany(Acompte::class, 'client_id');
+    }
+
+    /**
      * Ajouter une dette au solde
      */
     public function ajouterDette(float $montant): void
@@ -63,6 +71,22 @@ class Client extends Model
     {
         $nouveauSolde = max(0, $this->solde_dette - $montant);
         $this->update(['solde_dette' => $nouveauSolde]);
+    }
+
+    /**
+     * Enregistre un acompte : un solde négatif représente le crédit disponible.
+     */
+    public function ajouterAcompte(float $montant): void
+    {
+        $this->decrement('solde_dette', $montant);
+    }
+
+    /**
+     * Consomme le crédit disponible lors d'une vente.
+     */
+    public function consommerAcompte(float $montant): void
+    {
+        $this->increment('solde_dette', $montant);
     }
 
     /**
@@ -128,6 +152,22 @@ class Client extends Model
     }
 
     /**
+     * Vérifier si le client possède un acompte disponible.
+     */
+    public function aAcompte(): bool
+    {
+        return $this->solde_dette < 0;
+    }
+
+    /**
+     * Montant d'acompte disponible, toujours positif.
+     */
+    public function acompteDisponible(): float
+    {
+        return max(0, -(float) $this->solde_dette);
+    }
+
+    /**
      * Scope pour filtrer par utilisateur
      */
     public function scopeByUtilisateur($query, int $utilisateurId)
@@ -152,5 +192,13 @@ class Client extends Model
     public function scopeAvecDettes($query)
     {
         return $query->where('solde_dette', '>', 0);
+    }
+
+    /**
+     * Scope pour les clients avec acompte disponible.
+     */
+    public function scopeAvecAcomptes($query)
+    {
+        return $query->where('solde_dette', '<', 0);
     }
 }

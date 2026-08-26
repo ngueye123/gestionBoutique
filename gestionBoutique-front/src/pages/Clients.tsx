@@ -126,7 +126,8 @@ export default function Clients() {
   );
 
   // ✅ Calculs sécurisés
-  const totalDettes = clients.reduce((sum, c) => sum + getSoldeDette(c.solde_dette), 0);
+  const totalDettes = clients.reduce((sum, c) => sum + Math.max(0, getSoldeDette(c.solde_dette)), 0);
+  const totalAcomptes = clients.reduce((sum, c) => sum + Math.max(0, -getSoldeDette(c.solde_dette)), 0);
   const clientsAvecDettes = clients.filter(c => getSoldeDette(c.solde_dette) > 0).length;
 
   if (loading) {
@@ -142,7 +143,7 @@ export default function Clients() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-800">Gestion des clients</h1>
-          <p className="text-gray-600 text-sm">Gérez vos clients et leurs dettes</p>
+          <p className="text-gray-600 text-sm">Gérez les dettes et acomptes de vos clients</p>
         </div>
         <button
           onClick={() => openModal()}
@@ -193,6 +194,17 @@ export default function Clients() {
         <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm">
           <div className="flex items-center justify-between">
             <div>
+              <p className="text-xs sm:text-sm text-gray-600">Total des acomptes</p>
+              <p className="text-xl sm:text-2xl font-bold text-green-600">
+                {totalAcomptes.toFixed(2)} F
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-4 sm:p-6 rounded-lg shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
               <p className="text-xs sm:text-sm text-gray-600">Clients avec dettes</p>
               <p className="text-xl sm:text-2xl font-bold text-gray-800">
                 {clientsAvecDettes}
@@ -221,7 +233,7 @@ export default function Clients() {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nom</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Téléphone</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">carte</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dette actuelle</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Solde client</th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
@@ -255,11 +267,9 @@ export default function Clients() {
                   
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                      soldeDette === 0
-                        ? 'bg-green-100 text-green-800'
-                        : 'bg-red-100 text-red-800'
+                      soldeDette > 0 ? 'bg-red-100 text-red-800' : soldeDette < 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                     }`}>
-                      {soldeDette.toFixed(2)} F
+                      {soldeDette > 0 ? `Dette : ${soldeDette.toFixed(2)} F` : soldeDette < 0 ? `Acompte : ${(-soldeDette).toFixed(2)} F` : 'Soldé'}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -326,13 +336,11 @@ export default function Clients() {
                   </div>
                 </div>
                 <div className="text-right flex-shrink-0">
-                  <p className="text-xs text-gray-500 mb-1">Dette</p>
+                  <p className="text-xs text-gray-500 mb-1">Solde</p>
                   <span className={`px-2 py-1 rounded-full text-xs font-medium inline-block ${
-                    soldeDette === 0
-                      ? 'bg-green-100 text-green-800'
-                      : 'bg-red-100 text-red-800'
+                    soldeDette > 0 ? 'bg-red-100 text-red-800' : soldeDette < 0 ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
                   }`}>
-                    {soldeDette.toFixed(2)} F
+                    {soldeDette > 0 ? `Dette : ${soldeDette.toFixed(2)} F` : soldeDette < 0 ? `Acompte : ${(-soldeDette).toFixed(2)} F` : 'Soldé'}
                   </span>
                 </div>
               </div>

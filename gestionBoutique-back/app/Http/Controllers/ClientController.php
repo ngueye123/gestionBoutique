@@ -102,6 +102,9 @@ class ClientController extends Controller
                 },
                 'remboursements' => function($q) {
                     $q->latest()->take(10);
+                },
+                'acomptes' => function($q) {
+                    $q->with('employe')->latest()->take(10);
                 }
             ])
             ->findOrFail($id); // lève ModelNotFoundException si absent → géré globalement

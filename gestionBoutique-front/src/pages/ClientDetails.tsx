@@ -1,12 +1,12 @@
 // src/pages/ClientDetails.tsx
 
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, DollarSign, Calendar, User, Phone, Plus, Receipt, Gift, Check } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowLeft, Calendar, Phone, Plus, Gift, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/authStore';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { getApiErrorMessage } from '../lib/apiError';
-import { Client, Remboursement, VenteCredit, FideliteHistorique } from '../types';
+import { Acompte, Client, Remboursement, VenteCredit, FideliteHistorique } from '../types';
 import { useParams } from 'react-router-dom';
 import VenteDetailPanel from '../components/ventes/VenteDetailPanel';
 import { InvoiceButton } from '../components/InvoiceButton';
@@ -16,22 +16,28 @@ export default function ClientDetails() {
   const clientId = parseInt(id || '1');
   const [client, setClient] = useState<Client | null>(null);
   const [remboursements, setRemboursements] = useState<Remboursement[]>([]);
+  const [acomptes, setAcomptes] = useState<Acompte[]>([]);
   const [ventes, setVentes] = useState<VenteCredit[]>([]);
   const [loading, setLoading] = useState(true);
   const [showRemboursementModal, setShowRemboursementModal] = useState(false);
+  const [showAcompteModal, setShowAcompteModal] = useState(false);
   const [remboursementData, setRemboursementData] = useState({
     montant: '',
     moyen_paiement: 'especes' as 'especes' | 'wave' | 'orange_money' | 'carte',
     note: ''
   });
   const [selectedReference, setSelectedReference] = useState<string | null>(null);
+  const [acompteData, setAcompteData] = useState({
+    montant: '',
+    moyen_paiement: 'especes' as 'especes' | 'wave' | 'orange_money' | 'carte',
+    note: ''
+  });
   const [submitting, setSubmitting] = useState(false);
 
   // Fidélité
   const [fideliteHistoriques, setFideliteHistoriques] = useState<FideliteHistorique[]>([]);
   const [togglingId, setTogglingId] = useState<number | null>(null);
 
-  const { token } = useAuthStore();
   const canGererRecompense = useAuthStore(s => s.canManageProducts); // patron/admin/vendeur — même règle que côté back
 
   // ✅ Fonction utilitaire pour convertir solde_dette en nombre
@@ -62,6 +68,7 @@ export default function ClientDetails() {
       if (data.success) {
         setClient(data.client);
         setRemboursements(data.client.remboursements || []);
+        setAcomptes(data.client.acomptes || []);
         setVentes(data.client.ventes || []);
       } else {
         toast.error('Client non trouvé');
@@ -158,6 +165,36 @@ export default function ClientDetails() {
     }
   };
 
+  const handleAcompte = async () => {
+    const montant = parseInt(acompteData.montant, 10);
+    if (!Number.isInteger(montant) || montant <= 0) {
+      toast.error('Veuillez entrer un montant entier valide');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await fetchWithAuth(`${API_URL}/clients/${clientId}/acomptes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...acompteData, montant, note: acompteData.note || null }),
+      });
+      const result = await response.json();
+      if (result.success) {
+        toast.success('Acompte enregistré avec succès');
+        fetchClientDetails();
+        setShowAcompteModal(false);
+        setAcompteData({ montant: '', moyen_paiement: 'especes', note: '' });
+      } else {
+        toast.error(getApiErrorMessage(result, "Impossible d'enregistrer l'acompte."));
+      }
+    } catch {
+      toast.error("Impossible d'enregistrer l'acompte. Vérifiez votre connexion.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -176,6 +213,8 @@ export default function ClientDetails() {
 
   // ✅ Calcul sécurisé du solde
   const soldeDette = getSoldeDette(client.solde_dette);
+  const detteActuelle = Math.max(0, soldeDette);
+  const acompteDisponible = Math.max(0, -soldeDette);
 
   return (
     <div className="space-y-6">
@@ -197,7 +236,15 @@ export default function ClientDetails() {
           </div>
         </div>
 
-        {soldeDette > 0 && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowAcompteModal(true)}
+            className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center"
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Enregistrer un acompte
+          </button>
+        {detteActuelle > 0 && (
           <button
             onClick={() => setShowRemboursementModal(true)}
             className="bg-green-500 text-white px-4 py-2 rounded-md hover:bg-green-600 flex items-center"
@@ -206,6 +253,7 @@ export default function ClientDetails() {
             Enregistrer un remboursement
           </button>
         )}
+        </div>
       </div>
 
       {/* Stats */}
@@ -215,15 +263,24 @@ export default function ClientDetails() {
             <div>
               <p className="text-sm text-gray-600">Dette actuelle</p>
               <p className={`text-2xl font-bold ${
-                soldeDette === 0 ? 'text-green-600' : 'text-red-600'
+                detteActuelle === 0 ? 'text-green-600' : 'text-red-600'
               }`}>
-                {soldeDette.toFixed(2)} F
+                {detteActuelle.toFixed(2)} F
               </p>
             </div>
             <div className={`p-3 rounded-full ${
-              soldeDette === 0 ? 'bg-green-100' : 'bg-red-100'
+              detteActuelle === 0 ? 'bg-green-100' : 'bg-red-100'
             }`}>
              
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-lg shadow-sm">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Acompte disponible</p>
+              <p className="text-2xl font-bold text-green-600">{acompteDisponible.toFixed(2)} F</p>
             </div>
           </div>
         </div>
@@ -261,6 +318,25 @@ export default function ClientDetails() {
               <Calendar className="w-6 h-6 text-purple-600" />
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="bg-white rounded-lg shadow-sm">
+        <div className="p-6 border-b">
+          <h2 className="text-lg font-semibold">Historique des acomptes</h2>
+        </div>
+        <div className="divide-y">
+          {acomptes.length > 0 ? acomptes.map(acompte => (
+            <div key={acompte.id} className="p-6 hover:bg-gray-50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="font-semibold text-green-600">+{getMontant(acompte.montant).toFixed(2)} F</div>
+                  <div className="text-sm text-gray-600 mt-1">{acompte.moyen_paiement} - {new Date(acompte.created_at).toLocaleDateString('fr-FR')}</div>
+                  {acompte.note && <div className="text-sm text-gray-500 mt-1">Note: {acompte.note}</div>}
+                </div>
+              </div>
+            </div>
+          )) : <div className="p-12 text-center text-gray-500"><p>Aucun acompte enregistré</p></div>}
         </div>
       </div>
 
@@ -548,6 +624,41 @@ export default function ClientDetails() {
                 >
                   {submitting ? 'Enregistrement...' : 'Enregistrer'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAcompteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg w-full max-w-md">
+            <h2 className="text-xl font-bold mb-4">Enregistrer un acompte</h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Montant (F)</label>
+                <input type="number" step="1" min="1" value={acompteData.montant}
+                  onChange={e => setAcompteData({ ...acompteData, montant: e.target.value })}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" placeholder="0" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Moyen de paiement</label>
+                <select value={acompteData.moyen_paiement}
+                  onChange={e => setAcompteData({ ...acompteData, moyen_paiement: e.target.value as typeof acompteData.moyen_paiement })}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                  <option value="especes">Espèces</option><option value="wave">Wave</option><option value="orange_money">Orange Money</option><option value="carte">Carte</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Note (optionnel)</label>
+                <textarea value={acompteData.note} onChange={e => setAcompteData({ ...acompteData, note: e.target.value })}
+                  className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500" rows={3} />
+              </div>
+              <div className="flex justify-end space-x-2 pt-4">
+                <button onClick={() => setShowAcompteModal(false)} disabled={submitting}
+                  className="px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50">Annuler</button>
+                <button onClick={handleAcompte} disabled={submitting || !acompteData.montant}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-300">{submitting ? 'Enregistrement...' : 'Enregistrer'}</button>
               </div>
             </div>
           </div>

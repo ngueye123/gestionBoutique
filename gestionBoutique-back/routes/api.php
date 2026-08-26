@@ -9,6 +9,7 @@ use App\Http\Controllers\EmployeAuthController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\VenteController;
 use App\Http\Controllers\ClientController;
+use App\Http\Controllers\AcompteController;
 use App\Http\Controllers\RemboursementController;
 use App\Http\Controllers\FactureController;
 use App\Http\Controllers\CaisseController;
@@ -101,6 +102,8 @@ Route::middleware(['jwt.custom'])->group(function () {
         Route::get('/{id}', [ClientController::class, 'show']);
         Route::put('/{id}', [ClientController::class, 'update']);
         Route::delete('/{id}', [ClientController::class, 'destroy']);
+        Route::post('/{id}/acomptes', [AcompteController::class, 'store'])
+            ->middleware(CheckCaissePlafond::class);
         Route::get('/{id}/remboursements', [RemboursementController::class, 'historiqueClient']);
     });
 

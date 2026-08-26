@@ -16,7 +16,10 @@ class CheckCaissePlafond
         $ligneEspeces = collect($request->input('paiements', []))
             ->firstWhere('mode', 'especes');
 
-        if (!$ligneEspeces && $request->input('type_operation') !== 'remboursement_dette') {
+        $estAcompteEspeces = $request->is('api/clients/*/acomptes')
+            && $request->input('moyen_paiement') === 'especes';
+
+        if (!$ligneEspeces && $request->input('type_operation') !== 'remboursement_dette' && !$estAcompteEspeces) {
             return $next($request);
         }
 
@@ -41,6 +44,8 @@ class CheckCaissePlafond
         // 2. Calcul montant entrant : uniquement la part réellement remise en espèces
         if ($request->input('type_operation') === 'remboursement_dette') {
             $montantEntrant = floatval($request->input('montant_rembourse', 0));
+        } elseif ($estAcompteEspeces) {
+            $montantEntrant = floatval($request->input('montant', 0));
         } else {
             $montantEntrant = (float) ($ligneEspeces['montant_recu'] ?? 0);
         }
