@@ -13,6 +13,7 @@ class Depense extends Model
 
    protected $fillable = [
         'utilisateur_id',
+        'employe_id',
         'caisse_id',
         'mouvement_caisse_id',
         'montant',
@@ -35,6 +36,11 @@ class Depense extends Model
     public function utilisateur(): BelongsTo
     {
         return $this->belongsTo(Utilisateur::class, 'utilisateur_id');
+    }
+
+    public function employe(): BelongsTo
+    {
+        return $this->belongsTo(Employe::class, 'employe_id');
     }
 
     public function caisse(): BelongsTo
@@ -62,6 +68,11 @@ class Depense extends Model
     public function scopeByUtilisateur($query, int $utilisateurId)
     {
         return $query->where('utilisateur_id', $utilisateurId);
+    }
+
+    public function scopeByEmploye($query, int $employeId)
+    {
+        return $query->where('employe_id', $employeId);
     }
 
     public function scopeParMois($query, int $mois, int $annee)

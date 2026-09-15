@@ -61,6 +61,19 @@ class DepenseController extends Controller
         //abort(403, 'Accès refusé aux dépenses.');
     }
 
+    /**
+     * Restreint une requête de dépenses au seul créateur pour un employé
+     * non-admin (vendeur). Le patron et l'employé admin voient tout.
+     */
+    private function scopeVisibilite($query, Employe|Utilisateur $actor)
+    {
+        if ($actor instanceof Employe && $actor->role !== 'admin') {
+            return $query->where('employe_id', $actor->id);
+        }
+
+        return $query;
+    }
+
     
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -77,6 +90,7 @@ class DepenseController extends Controller
             return $this->accessDeniedResponse('Seuls les patrons et employés admin peuvent gérer les dépenses');
         }
         $patron = $this->resolveOwner();
+        $actor  = $this->getActor();
 
         $request->validate([
             'start_date' => 'nullable|date',
@@ -90,7 +104,7 @@ class DepenseController extends Controller
         $useRange = $request->filled('start_date') || $request->filled('end_date');
 
         // ── Requête de base ───────────────────────────────────────────────────
-        $query = Depense::byUtilisateur($patron->id)
+        $query = $this->scopeVisibilite(Depense::byUtilisateur($patron->id), $actor)
             ->with('reglements')
             ->orderByDesc('date_depense')
             ->orderByDesc('created_at');
@@ -173,7 +187,7 @@ class DepenseController extends Controller
                 ->setYear($annee)
                 ->subMonth();
 
-            $totalPeriodePrecedente = Depense::byUtilisateur($patron->id)
+            $totalPeriodePrecedente = $this->scopeVisibilite(Depense::byUtilisateur($patron->id), $actor)
                 ->parMois($moisPrecedent->month, $moisPrecedent->year)
                 ->sum('montant');
 
@@ -254,6 +268,7 @@ class DepenseController extends Controller
 
             $depense = Depense::create([
                 'utilisateur_id' => $patron->id,
+                'employe_id'     => $actor instanceof Employe ? $actor->id : null,
                 'caisse_id'      => $caisse->id,
                 'montant'        => $montant,
                 'montant_regle'  => $montantRegle,
@@ -314,6 +329,7 @@ class DepenseController extends Controller
         }
 
         $patron = $this->resolveOwner();
+        $actor  = $this->getActor();
 
         try {
             $validated = $request->validate([
@@ -331,7 +347,7 @@ class DepenseController extends Controller
             ], 422);
         }
 
-        $depense = Depense::byUtilisateur($patron->id)->findOrFail($id);
+        $depense = $this->scopeVisibilite(Depense::byUtilisateur($patron->id), $actor)->findOrFail($id);
 
         $nouveauMontant = floatval($validated['montant']);
         $ancienMontant  = (float) $depense->montant;
@@ -383,7 +399,8 @@ class DepenseController extends Controller
         }
 
         $patron  = $this->resolveOwner();
-        $depense = Depense::byUtilisateur($patron->id)->findOrFail($id);
+        $actor   = $this->getActor();
+        $depense = $this->scopeVisibilite(Depense::byUtilisateur($patron->id), $actor)->findOrFail($id);
 
         DB::beginTransaction();
         try {
@@ -445,7 +462,7 @@ class DepenseController extends Controller
 
         DB::beginTransaction();
         try {
-            $depense = Depense::byUtilisateur($patron->id)
+            $depense = $this->scopeVisibilite(Depense::byUtilisateur($patron->id), $actor)
                 ->lockForUpdate()
                 ->findOrFail($id);
             $reste = (float) $depense->montant - (float) $depense->montant_regle;
@@ -510,8 +527,9 @@ class DepenseController extends Controller
         }
 
         $annee = (int) ($request->input('annee', now()->year));
+        $actor = $this->getActor();
 
-        $parMois = Depense::byUtilisateur($patron->id)
+        $parMois = $this->scopeVisibilite(Depense::byUtilisateur($patron->id), $actor)
             ->parAnnee($annee)
             ->select(
                 DB::raw('MONTH(date_depense) as mois'),
