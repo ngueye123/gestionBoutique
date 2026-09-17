@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use App\Models\Caisse;
 use App\Models\MouvementCaisse;
+use App\Exceptions\StockConflictException;
 use App\Services\VenteService;
 use App\Services\DashboardCacheService;
 
@@ -51,7 +52,9 @@ class VenteController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+       $actor = $this->resolveActor();
        $validated = $request->validate([
+        'local_uuid'                            => 'nullable|uuid|max:36',
         'client_id'                              => 'nullable|integer|exists:clients,id',   // NEW
             'items'                              => 'required|array|min:1',
             'items.*.id'                         => 'required|integer|exists:products,id',
@@ -66,8 +69,27 @@ class VenteController extends Controller
             'paiements.*.reference_transaction'          => 'nullable|string|max:50',
         ]);
 
+        if (!empty($validated['local_uuid'])) {
+            $ownerId = $actor instanceof Employe ? $actor->utilisateur_id : $actor->id;
+            $existing = Vente::where('utilisateur_id', $ownerId)
+                ->where('local_uuid', $validated['local_uuid'])
+                ->with('details', 'client', 'paiements')
+                ->first();
+
+            if ($existing) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Vente déjà enregistrée',
+                    'vente' => $existing,
+                    'nouveau_solde_client' => $existing->client?->solde_dette,
+                    'caisse' => null,
+                    'fidelite' => null,
+                    'idempotent' => true,
+                ], 200);
+            }
+        }
+
         try {
-            $actor  = $this->resolveActor();
             $result = $this->venteService->enregistrerVente($validated, $actor);
 
             return response()->json([
@@ -79,6 +101,19 @@ class VenteController extends Controller
                 'fidelite'             => $result['fidelite'],
             ], 201);
 
+        } catch (StockConflictException $e) {
+            return response()->json([
+                'success' => false,
+                'code' => 'STOCK_CONFLICT',
+                'message' => $e->getMessage(),
+                'conflict' => [
+                    'product_id' => $e->productId,
+                    'product_name' => $e->productName,
+                    'requested' => $e->requested,
+                    'available' => $e->available,
+                    'missing' => max(0, $e->requested - $e->available),
+                ],
+            ], 409);
         } catch (\RuntimeException $e) {
             $code = (int) $e->getCode();
             $httpCode = ($code >= 100 && $code < 600) ? $code : 400;

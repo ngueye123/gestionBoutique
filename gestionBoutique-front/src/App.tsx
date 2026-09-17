@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -22,6 +22,8 @@ import PriceOverrides from './pages/PriceOverrides';
 import Parametres from './pages/Parametres';
 import ProfilBoutique from './pages/ProfilBoutique';
 import VentesHistorique from './pages/VentesHistorique';
+import { syncClientsDown, syncProductsDown } from './services/syncDown';
+import { processPendingQueue } from './services/syncManager';
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore(state => state.token)
@@ -64,10 +66,42 @@ function RoleBasedRedirect() {
 
 export default function App() {
   const loadAuthFromStorage = useAuthStore(state => state.loadAuthFromStorage)
+  const token = useAuthStore(state => state.token)
 
   useEffect(() => {
     loadAuthFromStorage()
   }, [loadAuthFromStorage])
+
+  useEffect(() => {
+    if (!token) return;
+
+    const synchronize = () => {
+      if (navigator.onLine) {
+        void Promise.all([syncProductsDown(), syncClientsDown()])
+      }
+    }
+
+    synchronize()
+    const intervalId = window.setInterval(synchronize, 5 * 60 * 1000)
+    return () => window.clearInterval(intervalId)
+  }, [token])
+
+  useEffect(() => {
+    if (!token) return;
+
+    const processQueue = () => {
+      void processPendingQueue()
+    }
+
+    processQueue()
+    window.addEventListener('online', processQueue)
+    const intervalId = window.setInterval(processQueue, 30 * 1000)
+
+    return () => {
+      window.removeEventListener('online', processQueue)
+      window.clearInterval(intervalId)
+    }
+  }, [token])
 
   return (
     <BrowserRouter>

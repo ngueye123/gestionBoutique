@@ -13,6 +13,7 @@ class Vente extends Model
     
     protected $fillable = [
         'reference',
+        'local_uuid',
         'utilisateur_id',
         'employe_id',
         'client_id', // ← AJOUT pour les ventes à crédit

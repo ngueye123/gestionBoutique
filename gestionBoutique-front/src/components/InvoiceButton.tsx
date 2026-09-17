@@ -14,7 +14,47 @@ interface InvoiceButtonProps {
   variant?: 'primary' | 'secondary' | 'icon';
   defaultFormat?: 'a4' | 'thermal';
   iconAction?: 'print' | 'preview';
+  localSale?: LocalInvoiceSale;
 }
+
+export interface LocalInvoiceSale {
+  local_uuid: string;
+  reference: string;
+  total: number;
+  items: Array<{
+    name: string;
+    quantity: number;
+    unite: string;
+    price: number;
+    subtotal: number;
+  }>;
+  paiements: Array<{ mode: string; montant?: number; montant_recu?: number }>;
+}
+
+const escapeHtml = (value: string): string =>
+  value.replace(/[&<>'"]/g, character => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    "'": '&#39;',
+    '"': '&quot;',
+  })[character] || character);
+
+const openLocalInvoice = (sale: LocalInvoiceSale, print: boolean): void => {
+  const invoiceWindow = window.open('', '_blank', 'width=420,height=720');
+  if (!invoiceWindow) return;
+
+  const lines = sale.items.map(item => `
+    <tr><td>${escapeHtml(item.name)}<br><small>${item.quantity} ${escapeHtml(item.unite)} x ${item.price} F</small></td><td>${item.subtotal} F</td></tr>
+  `).join('');
+  const payments = sale.paiements.map(payment => `
+    <li>${escapeHtml(payment.mode)} : ${payment.montant ?? payment.montant_recu ?? 0} F</li>
+  `).join('');
+
+  invoiceWindow.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><title>${escapeHtml(sale.reference)}</title><style>body{font-family:Arial,sans-serif;width:320px;margin:24px auto;color:#111}h1{text-align:center;font-size:20px}p{font-size:12px;color:#555}table{width:100%;border-collapse:collapse;font-size:13px}td{padding:7px 0;border-bottom:1px solid #ddd}td:last-child{text-align:right;white-space:nowrap}.total{font-size:18px;font-weight:700;text-align:right;margin-top:16px}ul{font-size:12px;padding-left:18px}</style></head><body><h1>Gestion Boutique</h1><p>Référence : ${escapeHtml(sale.reference)}<br>Vente locale en attente de synchronisation</p><table>${lines}</table><p class="total">TOTAL : ${sale.total} F</p><ul>${payments}</ul><p>Identifiant local : ${escapeHtml(sale.local_uuid)}</p></body></html>`);
+  invoiceWindow.document.close();
+  if (print) invoiceWindow.onload = () => invoiceWindow.print();
+};
 
 export function InvoiceButton({
   saleId,
@@ -24,6 +64,7 @@ export function InvoiceButton({
   variant = 'primary',
   defaultFormat = 'a4',
   iconAction = 'print',
+  localSale,
 }: InvoiceButtonProps) {
   const [isPrinting, setIsPrinting] = useState(false);
   const [showFormatMenu, setShowFormatMenu] = useState(false);
@@ -35,7 +76,7 @@ export function InvoiceButton({
   const actualSaleId = saleId || venteId;
   const actualSaleReference = saleReference || venteReference || 'facture';
 
-  if (!actualSaleId) {
+  if (!actualSaleId && !localSale) {
     console.error('InvoiceButton: Aucun ID de vente fourni (saleId ou venteId)');
     return (
       <div className="text-red-500 text-sm">
@@ -68,6 +109,11 @@ export function InvoiceButton({
   const previewInvoice = async (format: 'a4' | 'thermal') => {
     setShowFormatMenu(false);
 
+    if (localSale) {
+      openLocalInvoice(localSale, false);
+      return;
+    }
+
     try {
       const response = await fetchWithAuth(
         `${API_URL}/ventes/${actualSaleId}/facture/preview?format=${format}`,
@@ -94,6 +140,12 @@ export function InvoiceButton({
   const printInvoice = async (format: 'a4' | 'thermal') => {
     setShowFormatMenu(false);
     setIsPrinting(true);
+
+    if (localSale) {
+      openLocalInvoice(localSale, true);
+      setIsPrinting(false);
+      return;
+    }
 
     try {
       const connected = await connectQzTray();

@@ -1,6 +1,7 @@
 // src/pages/POS.tsx
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import {
   Search, ShoppingCart, Plus, Minus, X,
   CheckCircle, FileText, Trash2, CreditCard,
@@ -11,12 +12,15 @@ import { Product, Client, FideliteConfig } from '../types';
 import { useCartStore } from '../store/cartStore';
 import { fetchWithAuth } from '../lib/fetchWithAuth';
 import { getApiErrorMessage } from '../lib/apiError';
-import { InvoiceButton, useInvoicePrint } from '../components/InvoiceButton';
+import { InvoiceButton, useInvoicePrint, type LocalInvoiceSale } from '../components/InvoiceButton';
 import { InvoiceSearch } from '../components/InvoiceSearch';
 import { CaisseBloqueeModal } from '../components/CaisseBloqueeModal';
 import { PriceOverrideModal } from '../components/PriceOverrideModal';
 import type { BloquageInfo } from '../hooks/useCaisse';
 import { UNIT_CONFIG, compatibleUnits, fromBase, lineSubtotal } from '../lib/unitConverter';
+import { localDb, type LocalClient, type LocalProduct } from '../db/localDb';
+import { syncProductsDown } from '../services/syncDown';
+import { creerVenteOffline, type VenteOfflineData } from '../services/venteService';
 
 type PaymentMethod = 'especes' | 'wave' | 'orange_money' | 'dette' | 'acompte';
 
@@ -66,11 +70,36 @@ const PAYMENT_METHODS: Array<{ value: PaymentMethod; label: string; icon: React.
   { value: 'acompte',      label: 'Acompte',       icon: <CreditCard className="w-4 h-4" /> },
 ];
 
+const PRODUCT_UNIT_TYPES: Product['unit_type'][] = ['piece', 'masse', 'volume', 'longueur'];
+
+const toProduct = (product: LocalProduct): Product => ({
+  id: product.id,
+  reference: product.reference || product.id,
+  name: product.name || product.nom,
+  price: product.price ?? product.prix,
+  stock: product.stock,
+  category: product.category || '',
+  min_stock: product.min_stock ?? 0,
+  utilisateur_id: 0,
+  unit_type: PRODUCT_UNIT_TYPES.includes(product.unit_type as Product['unit_type'])
+    ? product.unit_type as Product['unit_type']
+    : 'piece',
+  unit_reference: product.unit_reference || product.unite || 'piece',
+});
+
+const toClient = (client: LocalClient): Client => ({
+  id: client.id,
+  nom: client.nom,
+  telephone: client.telephone,
+  solde_dette: client.solde,
+  utilisateur_id: 0,
+  created_at: client.updated_at || '',
+  updated_at: client.updated_at || '',
+});
+
 // ─── Composant principal ──────────────────────────────────────────────────────
 
 export default function POS() {
-  const [products, setProducts]             = useState<Product[]>([]);
-  const [clients, setClients]               = useState<Client[]>([]);
   const [searchTerm, setSearchTerm]         = useState('');
   const [clientSearch, setClientSearch]     = useState('');
   const [lignesPaiement, setLignesPaiement] = useState<LignePaiement[]>([]);
@@ -93,6 +122,7 @@ export default function POS() {
 
   // Infos dernière vente
   const [lastSaleId, setLastSaleId]               = useState<number | null>(null);
+  const [lastOfflineSale, setLastOfflineSale]     = useState<LocalInvoiceSale | null>(null);
   const [lastSaleReference, setLastSaleReference] = useState('');
   const [lastSalePoints, setLastSalePoints]       = useState<number>(0);
   const [showTicketPrompt, setShowTicketPrompt]   = useState(false);
@@ -104,18 +134,28 @@ export default function POS() {
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
   const receivedRef = useRef<HTMLInputElement>(null);
   const searchRef   = useRef<HTMLInputElement>(null); // NEW — pour garder le focus en continu
+  const localProducts = useLiveQuery(() => localDb.products.toArray(), []);
+  const localClients = useLiveQuery<LocalClient[]>(
+    () => {
+      if (clientSearch.length < 2 || selectedClient) return Promise.resolve([] as LocalClient[]);
+      const normalizedSearch = clientSearch.toLowerCase();
+      return localDb.clients
+        .filter(client =>
+          client.nom.toLowerCase().includes(normalizedSearch) ||
+          client.telephone.includes(clientSearch)
+        )
+        .toArray();
+    },
+    [clientSearch, selectedClient],
+  );
+  const products = (localProducts ?? []).map(toProduct);
+  const clients = (localClients ?? []).map(toClient);
 
   // ── Chargements ───────────────────────────────────────────────────────────
 
-  useEffect(() => { fetchProducts(); }, []);
   useEffect(() => { fetchFideliteConfig(); }, []);
   useEffect(() => { fetchInvoiceFormat(); }, []);
   useEffect(() => { searchRef.current?.focus(); }, []); // NEW — prêt à scanner/taper dès l'ouverture
-
-  useEffect(() => {
-    if (clientSearch.length >= 2 && !selectedClient) searchClients();
-    else setClients([]);
-  }, [clientSearch, selectedClient]);
 
   useEffect(() => {
     if (showPaymentModal && modeEnCours === 'especes') {
@@ -135,15 +175,6 @@ export default function POS() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [showPaymentModal, showInvoiceSearchModal, overrideProduct]);
 
-  const fetchProducts = async () => {
-    try {
-      const res  = await fetchWithAuth(`${API_URL}/products`);
-      const data = await res.json();
-      if (data.success) setProducts(data.products);
-      else toast.error(getApiErrorMessage(data, 'Impossible de charger les produits.'));
-    } catch { toast.error('Impossible de charger les produits. Vérifiez votre connexion.'); }
-  };
-
   const fetchFideliteConfig = async () => {
     try {
       const res  = await fetchWithAuth(`${API_URL}/fidelite/config`);
@@ -158,14 +189,6 @@ export default function POS() {
       const data = await res.json();
       if (data.success) setDefaultInvoiceFormat(data.default_format);
     } catch { /* dégradation silencieuse — reste sur 'thermal' */ }
-  };
-
-  const searchClients = async () => {
-    try {
-      const res  = await fetchWithAuth(`${API_URL}/clients/search?q=${clientSearch}`);
-      const data = await res.json();
-      if (data.success) setClients(data.clients);
-    } catch { console.error('Erreur recherche clients'); }
   };
 
   const createClient = async () => {
@@ -273,25 +296,60 @@ export default function POS() {
 
     setLoading(true);
     try {
+      const venteData: VenteOfflineData = {
+        client_id: selectedClient?.id,
+        items: items.map(i => ({
+          id: parseInt(i.id),
+          quantity: i.quantity,
+          unite: i.unite_vente,
+          prix_override: i.isOverridden ? i.price : undefined,
+          justification: i.isOverridden ? i.justification : undefined,
+        })),
+        paiements: paiements.map(l => ({
+          mode: l.mode,
+          montant: l.mode === 'especes' ? undefined : l.montant,
+          montant_recu: l.mode === 'especes' ? l.montant_recu : undefined,
+          reference_transaction: l.reference_transaction,
+        })),
+      };
+
+      if (!navigator.onLine) {
+        const localUuid = await creerVenteOffline(venteData);
+        const reference = `OFF-${localUuid.slice(0, 8).toUpperCase()}`;
+        setLastSaleId(null);
+        setLastOfflineSale({
+          local_uuid: localUuid,
+          reference,
+          total,
+          items: items.map(item => ({
+            name: item.name,
+            quantity: item.quantity,
+            unite: item.unite_vente,
+            price: item.price,
+            subtotal: lineSubtotal(item),
+          })),
+          paiements: paiements.map(payment => ({
+            mode: payment.mode,
+            montant: payment.montant,
+            montant_recu: payment.montant_recu,
+          })),
+        });
+        setLastSaleReference(reference);
+        setLastSalePoints(0);
+        setShowSuccessModal(true);
+        setShowTicketPrompt(false);
+        clearCart();
+        setShowPaymentModal(false);
+        resetPaymentState();
+        toast.success('Vente enregistrée hors ligne. Elle sera synchronisée automatiquement.');
+        setTimeout(() => searchRef.current?.focus(), 150);
+        return;
+      }
+
       const res = await fetchWithAuth(`${API_URL}/ventes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          client_id: selectedClient?.id,
-          items: items.map(i => ({
-            id: parseInt(i.id),
-            quantity: i.quantity,
-            unite: i.unite_vente,
-            prix_override: i.isOverridden ? i.price : undefined,
-            justification: i.isOverridden ? i.justification : undefined,
-          })),
-          paiements: paiements.map(l => ({
-            mode: l.mode,
-            montant: l.mode === 'especes' ? undefined : l.montant,
-            montant_recu: l.mode === 'especes' ? l.montant_recu : undefined,
-            reference_transaction: l.reference_transaction,
-          })),
-        }),
+        body: JSON.stringify(venteData),
       });
       const result = await res.json();
 
@@ -303,6 +361,7 @@ export default function POS() {
 
       if (result.success) {
         setLastSaleId(result.vente.id);
+        setLastOfflineSale(null);
         setLastSaleReference(result.vente.reference);
         setLastSalePoints(result.fidelite?.points ?? 0);
 
@@ -340,7 +399,7 @@ export default function POS() {
         clearCart();
         setShowPaymentModal(false);
         resetPaymentState();
-        fetchProducts();
+        void syncProductsDown();
         setTimeout(() => searchRef.current?.focus(), 150); // NEW — prêt pour la vente suivante
       } else {
         toast.error(getApiErrorMessage(result, 'Impossible d\'enregistrer la vente.'));
@@ -770,7 +829,6 @@ export default function POS() {
                   key={client.id}
                   onClick={() => {
                     setSelectedClient(client);
-                    setClients([]);
                     setClientSearch('');
                   }}
                   className="w-full px-3 py-2 text-left hover:bg-gray-50
@@ -1048,7 +1106,7 @@ export default function POS() {
       )}
 
       {/* ══ Modal succès ════════════════════════════════════════════════════ */}
-      {showSuccessModal && lastSaleId && lastSaleReference && (
+      {showSuccessModal && (lastSaleId || lastOfflineSale) && lastSaleReference && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-xl p-6 text-center">
             <div className="w-16 h-16 bg-green-100 rounded-full flex items-center
@@ -1089,6 +1147,7 @@ export default function POS() {
                         setShowSuccessModal(false);
                         setShowTicketPrompt(false);
                         setLastSaleId(null);
+                        setLastOfflineSale(null);
                         setLastSaleReference('');
                         setLastSalePoints(0);
                       }}
@@ -1102,6 +1161,7 @@ export default function POS() {
                         setShowSuccessModal(false);
                         setShowTicketPrompt(false);
                         setLastSaleId(null);
+                        setLastOfflineSale(null);
                         setLastSaleReference('');
                         setLastSalePoints(0);
                       }}
@@ -1115,8 +1175,9 @@ export default function POS() {
             ) : (
               <div className="space-y-2">
                 <InvoiceButton
-                  venteId={lastSaleId}
+                  venteId={lastSaleId ?? undefined}
                   venteReference={lastSaleReference}
+                  localSale={lastOfflineSale ?? undefined}
                   variant="primary"
                   defaultFormat={defaultInvoiceFormat}
                 />
@@ -1124,6 +1185,7 @@ export default function POS() {
                   onClick={() => {
                     setShowSuccessModal(false);
                     setLastSaleId(null);
+                    setLastOfflineSale(null);
                     setLastSaleReference('');
                     setLastSalePoints(0);
                   }}

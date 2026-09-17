@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore';
 import { EmployeUser } from '../types';
 import { Wallet } from 'lucide-react';
 import { History } from 'lucide-react';
+import { OfflineIndicator } from './OfflineIndicator.tsx';
 
 //import { TrendingDown } from 'lucide-react';
 function Layout() {
@@ -224,6 +225,7 @@ function Layout() {
         </div>
 
         {/* Contenu */}
+        <OfflineIndicator />
         <div className="flex-1 p-4 md:p-8 overflow-auto">
           <Outlet />
         </div>

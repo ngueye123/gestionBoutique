@@ -11,6 +11,7 @@ use App\Models\Employe;
 use App\Models\PriceOverride;
 use App\Models\VentePaiement;
 use App\Models\Utilisateur;
+use App\Exceptions\StockConflictException;
 use App\Models\MouvementCaisse;
 use APP\Models\Fidelite;
 use App\Services\FideliteService;
@@ -54,24 +55,41 @@ class VenteService
         $paiements = $validated['paiements'];
         $clientId  = $validated['client_id'] ?? null;   
 
+        if (!empty($validated['local_uuid'])) {
+            $existing = Vente::where('utilisateur_id', $ownerId)
+                ->where('local_uuid', $validated['local_uuid'])
+                ->with('details', 'client', 'paiements')
+                ->first();
+
+            if ($existing) {
+                return [
+                    'vente' => $existing,
+                    'nouveau_solde_client' => $existing->client?->solde_dette,
+                    'caisse' => null,
+                    'fidelite' => null,
+                ];
+            }
+        }
+
         // --- Contrôle C3 : dette ou acompte exigent un client rattaché ---
         $ligneClient = collect($paiements)->first(fn (array $paiement) => in_array($paiement['mode'], ['dette', 'acompte'], true));
         if ($ligneClient && !$clientId) {
             throw new \RuntimeException('Client requis pour une vente à crédit ou avec acompte', 400);
         }
 
-        $client = $clientId
-            ? Client::byUtilisateur($ownerId)->lockForUpdate()->findOrFail($clientId)
-            : null;
-
-        DB::beginTransaction();
-
         try {
+            DB::beginTransaction();
+
+            $client = $clientId
+                ? Client::byUtilisateur($ownerId)->lockForUpdate()->findOrFail($clientId)
+                : null;
+
             $total      = 0;
             $venteItems = [];
 
             $vente = Vente::create([
                 'reference'       => Vente::generateReference(),
+                'local_uuid'      => $validated['local_uuid'] ?? null,
                 'utilisateur_id'  => $ownerId,
                 'employe_id'      => $employeId,
                 'client_id'       => $clientId,
@@ -105,9 +123,11 @@ class VenteService
 
                 if (bccomp((string) $product->stock, (string) $qtyBase, 3) < 0) {
                     $uniteBase = UnitConverter::baseUnit($product->unit_type);
-                    throw new \RuntimeException(
-                        "Stock insuffisant pour {$product->name}. Disponible : {$product->stock} {$uniteBase}",
-                        400
+                    throw new StockConflictException(
+                        $product->id,
+                        $product->name,
+                        (float) $qtyBase,
+                        (float) $product->stock,
                     );
                 }
 
@@ -238,9 +258,12 @@ class VenteService
                     ->decrement('stock', $venteItem['quantite_base']);
 
                 if (!$affected) {
-                    throw new \RuntimeException(
-                        "Stock insuffisant pour {$product->name} (conflit détecté)",
-                        409
+                    $freshProduct = Product::whereKey($product->id)->first();
+                    throw new StockConflictException(
+                        $product->id,
+                        $product->name,
+                        (float) $venteItem['quantite_base'],
+                        (float) ($freshProduct?->stock ?? 0),
                     );
                 }
             }
